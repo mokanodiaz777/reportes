@@ -1,5 +1,17 @@
 <?php
 
+// Encabezados de seguridad
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("X-XSS-Protection: 1; mode=block");
+header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
+header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;");
+header("Referrer-Policy: no-referrer");
+header("Permissions-Policy: geolocation=(), camera=(), microphone=()");
+header("Expect-CT: enforce, max-age=86400, report-uri='https://yourdomain.com/report'");
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: Sat, 01 Jan 2000 00:00:00 GMT");
 
 require_once('tcpdf/tcpdf.php');
 
@@ -81,7 +93,8 @@ if (!is_dir($uploadDir)) {
 }
 
 
-function compressImage($source, $destination, $quality = 65, $maxWidth = 800, $maxHeight = 600)
+
+function compressImage($source, $destination, $quality = 80, $maxWidth = 800, $maxHeight = 600)
 {
     $info = getimagesize($source);
 
@@ -144,7 +157,7 @@ function compressImage($source, $destination, $quality = 65, $maxWidth = 800, $m
             break;
         case 'image/png':
             // La calidad en PNG va de 0 (sin compresión) a 9
-            $pngQuality = round((60 - $quality) / 5);
+            $pngQuality = round((80 - $quality) / 5);
             $result = imagepng($newImage, $destination, $pngQuality);
             break;
         case 'image/gif':
@@ -273,7 +286,7 @@ if (isset($_POST['guardar_reporte'])) {
     $direcciones = $_POST['direccion'];
 
     // Definir el tamaño máximo permitido (5MB)
-    $maxFileSize = 8 * 1920 * 1024; // 5MB en bytes
+    $maxFileSize = 12 * 1920 * 1024; // 5MB en bytes
 
     // Comenzar transacción
     $conn->begin_transaction();
@@ -637,8 +650,6 @@ if (isset($_POST['generar_pdf'])) {
 }
 
 
-
-
 // Verificar si se ha enviado una solicitud de eliminación
 if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
     $addressId = intval($_POST['address_id']);
@@ -659,7 +670,6 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
 }
 
 
-
 ?>
 
 <!DOCTYPE html>
@@ -672,515 +682,793 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
     <link href='https://fonts.googleapis.com/css?family=Roboto' rel='stylesheet'>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <title>Generador de Reportes</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box
-        }
-
-        body {
-            font-family: 'Roboto', sans-serif;
-            background-color: #333645;
-            color: #fff;
-            padding: 20px
-        }
-
-        .cuerpo {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: #232531;
-            padding: 30px;
-            border-radius: 6px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1)
-        }
-
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
-            color: #2c3e50
-        }
-
-        .form-group {
-            margin-bottom: 20px
-        }
-
-        label {
-            display: block;
-            font-weight: normal;
-            color: #fff;
-            margin-top: 10px;
-            margin-bottom: 10px;
-            font-size: 14px
-        }
-
-        input[type="text"],
-        input[type="date"],
-        textarea,
-        select {
-            font-family: 'Roboto', sans-serif;
-            padding: 10px 15px;
-            border: 0px solid #333645;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s, box-shadow 0.3s;
-            margin-bottom: 10px;
-            width: 228px;
-            background: #232531;
-            color: #a5a5a6
-        }
-
-        input[type="text"]:focus,
-        input[type="date"]:focus,
-        textarea:focus,
-        select:focus {
-            border-color: #9173e6;
-            outline: none;
-            box-shadow: 0 0 8px rgba(145, 115, 230, 0.5)
-        }
-
-        ::placeholder {
-            color: #a5a5a6
-        }
-
-        textarea {
-            resize: vertical;
-            min-height: 30px
-        }
-
-        button {
-            font-family: 'Roboto', sans-serif;
-            padding: 9px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background-color 0.3s, transform 0.2s
-        }
-
-        button:hover {
-            transform: translateY(-2px)
-        }
-
-        #agregarSeccion {
-            background-color: #4a9369;
-            color: #fff;
-            margin-bottom: 30px
-        }
-
-        #agregarSeccion:hover {
-            background-color: #40805e;
-        }
-
-        #guardarDireccion {
-            background-color: #787f99;
-            color: #fff;
-            margin-top: 10px
-        }
-
-        #guardarDireccion:hover {
-            background-color: #6a718b
-        }
-
-        .eliminarSeccion {
-            background-color: #c0392b;
-            color: #fff;
-            margin-top: 20px;
-            margin-bottom: 20px
-        }
-
-        .eliminarSeccion:hover {
-            background-color: #a93226
-        }
-
-        .eliminar-Seccion {
-            background-color: #c0392b;
-            color: #fff;
-            margin-top: 20px;
-            margin-bottom: 20px
-        }
-
-        .eliminar-Seccion:hover {
-            background-color: #a93226
-        }
-
-        .eliminarImagen {
-            background-color: #e74c3c;
-            color: #fff;
-            margin-top: 10px;
-            font-size: 14px;
-            padding: 5px 10px;
-            position: relative;
-            top: -48px;
-            right: -190px
-        }
-
-        .eliminar-preview {
-            background-color: #A93226;
-            color: #FFFFFF;
-            padding: 5px 10px;
-            position: relative;
-            top: -22px;
-            left: -42px
-        }
-
-        .eliminar-preview:hover {
-            background-color: #c0392b
-        }
-
-        .eliminarImagen:hover {
-            background-color: #c0392b
-        }
-
-        .eliminar-preview {
-            border-radius: 4px
-        }
-
-        form button[name="generar_pdf"],
-        form button[name="guardar_reporte"] {
-            background-color: #3498db;
-            color: #fff;
-            margin-right: 10px;
-            margin-left: 9px
-        }
-
-        form button[name="generar_pdf"]:hover,
-        form button[name="guardar_reporte"]:hover {
-            background-color: #2980b9
-        }
-
-        .preview {
-            margin-top: 10px;
-            position: relative
-        }
-
-        .preview img {
-            max-width: 25%;
-            height: auto;
-            border-radius: 0px;
-            padding: 6px;
-            background: #232531
-        }
-
-        @media (min-width: 768px) {
-            .form-group {
-                display: flex;
-                align-items: center
-            }
-
-            .form-group label {
-                flex: 1;
-                margin-bottom: 0
-            }
-
-            .form-group input[type="text"],
-            .form-group input[type="date"],
-            .form-group textarea,
-            .form-group select {
-                flex: 3
-            }
-        }
-
-
-        #nueva-direccion {
-            width: 510px
-        }
-
-        #cargarReporte {
-            background: #8e44ad;
-            margin-top: -10px;
-            color: #FFFFFF;
-            border: none;
-            padding: 9px 20px;
-            font-size: 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.3s ease;
-            margin-left: 9px
-        }
-
-        #cargarReporte:hover {
-            background: #a65cc6
-        }
-
-        #search-reportes {
-            width: 100px
-        }
-
-        #nombre {
-            width: 228px;
-            margin-bottom: 20px
-        }
-
-        .direccion {
-            background-color: #393E5E;
-            padding: 20px;
-            border-radius: 6px;
-            margin-top: 20px
-        }
-
-        .selector_reportes {
-            background-color: #393E5E;
-            padding: 20px;
-            border-radius: 6px;
-            margin-top: 0px;
-            padding-top: 35px;
-            width: 660px
-        }
-
-        .direccion-filter {
-            width: 100px !important
-        }
-
-        #select-reportes {
-            width: 330px
-        }
-
-        #form-reporte {
-            background-color: #333645;
-            padding: 20px;
-            border-radius: 6px;
-            margin-top: 20px;
-            padding-top: 45px
-        }
-
-        #fecha {
-            width: 228px
-        }
-
-        #botones_pie {
-            margin-top: 30px
-        }
-
-        .eliminar-imagen {
-            background-color: #A93226;
-            color: #FFFFFF;
-            padding: 5px 10px;
-            position: relative;
-            top: -22px;
-            left: -46px;
-            border-radius: 4px
-        }
-
-
-        .form-seccion {
-            margin-top: 30px
-        }
-
-        .btn-generar-pdf {
-            background-color: #4C9CAF !important;
-            color: #FFFFFF !important;
-            border: none !important;
-            padding: 9px 20px !important;
-            cursor: pointer !important;
-            font-size: 14px !important;
-            border-radius: 6px !important;
-            transition: background-color 0.3s ease !important
-        }
-
-        .btn-generar-pdf:hover {
-            background-color: #377988 !important
-        }
-
-        .btn-generar-pdf:active {
-            background-color: #3e8e41 !important
-        }
-
-        input[type="file"] {
-            padding: 5px 0;
-            background: #232531;
-            padding: 10px;
-            color: #a5a5a6;
-            border-radius: 6px
-        }
-
-        .direccion-text {
-            width: 600px !important
-        }
-
-        select {
-            background-color: #1b1b2d !important
-        }
-
-        #seccionDestino {
-            visibility: hidden
-        }
-
-        #bajarDestino {
-            visibility: hidden
-        }
-
-        #botonSubir {
-            background-color: #787f99;
-            color: #FFFFFF
-        }
-
-        #botonSubir:hover {
-            background-color: #6a718b;
-            color: #FFFFFF
-        }
-
-        #botonBajar {
-            background-color: #787f99;
-            color: #FFFFFF
-        }
-
-        #botonBajar:hover {
-            background-color: #6a718b;
-            color: #FFFFFF
-        }
-
-        #limpiarFormulario {
-            position: absolute;
-            right: 0;
-            margin-top: 0
-        }
-
-        #limpiarFormulario {
-            display: inline-block;
-            padding: 10px 20px;
-            font-size: 16px;
-            color: #fff;
-            background-color: #EA6C70;
-            border: none;
-            border-radius: 4px;
-            text-decoration: none;
-            cursor: pointer;
-            transition: background-color 0.3s ease
-        }
-
-        #limpiarFormulario:hover {
-            background-color: #F98266
-        }
-
-        #progress-container {
-            width: 100%;
-            height: 60px;
-            border-radius: 0px;
-            margin-top: 20px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            display: none
-        }
-
-        #progress-bar {
-            position: relative;
-            width: 100%;
-            height: 60px !important;
-            background-color: #242632;
-            border-radius: 0px;
-            overflow: hidden;
-            padding-top: 6px;
-            background-color: #787f99 !important
-        }
-
-        #progress-bar span {
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 12px;
-            font-family: 'Roboto', sans-serif;
-            font-weight: 400;
-            color: #000;
-            text-align: center;
-            white-space: nowrap;
-            padding: 0px 10px
-        }
-
-
-        .styled-input {
-            padding: 10px 12px;
-            border-radius: 4px;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.3s ease, box-shadow 0.3s ease;
-            width: 100%;
-            color: #6f6f6e
-        }
-
-        .styled-input:focus {
-            border-color: #3498db;
-            box-shadow: 0 0 5px rgba(52, 152, 219, 0.3)
-        }
-
-        .styled-select {
-            padding: 10px 12px;
-            color: #a5a5a6;
-            border: 0px solid #5a4d7e;
-            border-radius: 6px;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.3s ease, box-shadow 0.3s ease;
-            background-color: #232531;
-            width: 400px;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            appearance: none
-        }
-
-        .styled-select:focus {
-            border-color: #3498db;
-            box-shadow: 0 0 5px rgba(52, 152, 219, 0.3)
-        }
-
-        .delete-button {
-            background-color: #973b42;
-            color: #fff;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: normal;
-            transition: background-color 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            font-family: 'Roboto', sans-serif;
-            margin-top: -10px;
-            margin-left: 3px
-        }
-
-        .delete-button:hover {
-            background-color: #753535;
-        }
-
-        #addressFilter {
-            width: 100px
-        }
-
-        #tituloImagen {
-            display: block;
-            margin: 0 auto;
-            max-width: 300px;
-            width: 100%;
-            height: auto
-        }
-
-        #guardarDireccion {
-            margin-left: 9px;
-        }
-
-        #search-reportes::placeholder {
-            color: #3a3a46;
-            font-style: italic;
-        }
-
-        #addressFilter::placeholder {
-            color: #3a3a46;
-            font-style: italic;
-        }
-
-        .direccion-filter::placeholder {
-            color: #3a3a46;
-            font-style: italic;
-        }
-
-        .upload-status {
-            margin-top: 5px;
-            font-size: 0.9em;
-        }
-    </style>
+ <style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: "Roboto", sans-serif;
+    background-color: #333645;
+    color: #fff;
+    padding: 20px;
+  }
+
+  .cuerpo {
+    max-width: 1080px;
+    margin: 0 auto;
+    background-color: #1b1b2d;
+    padding: 30px;
+    border-radius: 6px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  }
+
+  h1 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #2c3e50;
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+  }
+
+  label {
+    display: block;
+    font-weight: normal;
+    color: #fff;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    font-size: 14px;
+  }
+
+  input[type="text"],
+  input[type="date"],
+  textarea,
+  select {
+    font-family: "Roboto", sans-serif;
+    padding: 10px 15px;
+    border: 1px solid #5b5f6b;
+    /* Bordes más sutiles */
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    margin-bottom: 10px;
+    width: 228px;
+    background: #2d2f3a;
+    color: #d1d1d1;
+    /* Colores de texto más claros */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    /* Sombra sutil */
+  }
+
+  input[type="text"]:focus,
+  input[type="date"]:focus,
+  textarea:focus,
+  select:focus {
+    border-color: #4c9caf;
+    /* Color de borde en foco */
+    box-shadow: 0 0 8px rgba(76, 156, 175, 0.15);
+    /* Efecto de foco con la mitad del brillo reducido nuevamente */
+    outline: none;
+    /* Eliminar el borde predeterminado */
+  }
+
+  ::placeholder {
+    color: #a5a5a6;
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 30px;
+  }
+
+  button {
+    font-family: "Roboto", sans-serif;
+    padding: 9px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s, transform 0.2s;
+  }
+
+  button:hover {
+    transform: translateY(0px);
+  }
+
+  .eliminar-Seccion,
+  .eliminarSeccion {
+    background: linear-gradient(135deg, #d9534f, #c9302c);
+  border-radius: 0 4px 4px 0;
+  color: #ffffff;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: normal;
+  cursor: pointer;
+  transition: background 0.3s ease, transform 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-top: 38px;
+  }
+
+  .eliminar-Seccion:hover,
+  .eliminarSeccion:hover {
+    background: linear-gradient(135deg, #c9302c, #d9534f);
+  }
+
+  .eliminar-preview {
+    background-color: #e6867c;
+    color: #ffffff;
+    padding: 5px 10px;
+    position: relative;
+    top: -50px;
+    left: 260px;
+  }
+
+  .eliminar-preview:hover {
+    background-color: #c0392b;
+  }
+
+  .eliminarImagen:hover {
+    background-color: #c0392b;
+  }
+
+  .eliminar-preview {
+    border-radius: 4px;
+  }
+
+  .preview {
+    margin-top: 10px;
+    position: relative;
+  }
+
+  .preview img {
+    max-width: 300px;
+    height: auto;
+    border-radius: 0px;
+    background: #232531;
+  }
+
+  @media (min-width: 768px) {
+    .form-group {
+      display: flex;
+      align-items: center;
+    }
+
+    .form-group label {
+      flex: 1;
+      margin-bottom: 0;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="date"],
+    .form-group textarea,
+    .form-group select {
+      flex: 3;
+    }
+  }
+
+  .direccion {
+    background-color: #393e5e;
+    padding: 20px;
+    border-radius: 4px;
+    margin-top: 20px;
+  }
+
+  .selector_reportes {
+    background-color: #393e5e;
+    padding: 20px;
+    border-radius: 4px;
+    margin-top: 0px;
+    padding-top: 35px;
+    width: 660px;
+  }
+
+  .direccion-filter {
+    width: 100px !important;
+  }
+
+  .eliminar-imagen {
+    background-color: #993b3b;
+    color: #ffffff;
+    border-radius: 6px;
+    /* Bordes más redondeados */
+    padding: 6px 10px;
+    /* Un poco más de padding para mejor apariencia */
+    font-size: 14px;
+    /* Tamaño de fuente uniforme con otros botones */
+    font-family: "Roboto", sans-serif;
+    /* Fuente consistente */
+    border: none;
+    /* Eliminar borde */
+    cursor: pointer;
+    position: relative;
+    top: -50px;
+    left: 260px;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+    /* Suavizar transiciones */
+  }
+
+  .eliminar-imagen:hover {
+    background-color: #b94c4c;
+    /* Color de fondo más claro al pasar el ratón */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    /* Sombra sutil para profundidad */
+  }
+
+  .form-seccion {
+    margin-top: 30px;
+  }
+
+  .btn-generar-pdf {
+    background: linear-gradient(45deg, #4c9caf, #3b7a99, #2b5e74) !important;
+    background-size: 200% 200% !important;
+    color: #ffffff !important;
+    border: none !important;
+    padding: 9px 20px !important;
+    cursor: pointer !important;
+    font-size: 14px !important;
+    border-radius: 0px !important;
+    transition: background-position 0.3s ease !important;
+  }
+
+  .btn-generar-pdf:hover {
+    animation: fasterGradientAnimation 2s ease infinite !important;
+  }
+
+  @keyframes fasterGradientAnimation {
+    0% {
+      background-position: 0% 50%;
+    }
+
+    50% {
+      background-position: 100% 50%;
+    }
+
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  input[type="file"] {
+    padding: 5px 0;
+    background: #232531;
+    padding: 10px;
+    color: #a5a5a6;
+    border-radius: 4px;
+  }
+
+  .direccion-text {
+    width: 600px !important;
+  }
+
+  select {
+    background-color: #1b1b2d !important;
+  }
+
+  .styled-input {
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    width: 100%;
+    color: #6f6f6e;
+  }
+
+  .styled-input:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 5px rgba(52, 152, 219, 0.3);
+  }
+
+  .styled-select {
+    padding: 10px 12px;
+    color: #d1d1d1;
+    /* Colores de texto más claros */
+    border: 1px solid #5b5f6b;
+    /* Bordes alineados con los otros inputs */
+    border-radius: 4px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    background-color: #2d2f3a;
+    /* Fondo más oscuro */
+    width: 400px;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    /* Sombra sutil */
+  }
+
+  .styled-select:focus {
+    border-color: #4c9caf;
+    /* Color de borde en foco alineado con los otros inputs */
+    box-shadow: 0 0 8px rgba(76, 156, 175, 0.3);
+    /* Efecto de foco alineado con los otros inputs */
+  }
+
+  .delete-button {
+    background: linear-gradient(45deg, #973b42, #7b2d35, #5e2028);
+    background-size: 200% 200%;
+    color: #fff;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: normal;
+    transition: background-position 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-family: "Roboto", sans-serif;
+    margin-top: -10px;
+    margin-left: 3px;
+  }
+
+  .delete-button:hover {
+    animation: fasterGradientAnimation 2s ease infinite;
+  }
+
+  @keyframes fasterGradientAnimation {
+    0% {
+      background-position: 0% 50%;
+    }
+
+    50% {
+      background-position: 100% 50%;
+    }
+
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  .direccion-filter::placeholder {
+    color: #3a3a46;
+    font-style: italic;
+  }
+
+  .upload-status {
+    margin-top: 5px;
+    font-size: 0.9em;
+  }
+
+  .g_reporte {
+    margin-right: 0px !important;
+    margin-left: 0px !important;
+    height: 35px !important;
+    background: linear-gradient(45deg, #3b5998, #2b3f6f, #1f2a4a);
+    background-size: 200% 200%;
+    color: white;
+    transition: background-position 2s ease;
+    border-radius: 0 0 0 0;
+  }
+
+  .g_reporte:hover {
+    animation: fasterGradientAnimation 2s ease infinite;
+  }
+  
+  .g2_reporte {
+    margin-right: 0px !important;
+    margin-left: 0px !important;
+    height: 35px !important;
+    background: linear-gradient(45deg, #3b5998, #2b3f6f, #1f2a4a);
+    background-size: 200% 200%;
+    color: white;
+    transition: background-position 2s ease;
+    border-radius: 4px 0 0 4px;
+  }
+
+  .g2_reporte:hover {
+    animation: fasterGradientAnimation 2s ease infinite;
+  }
+
+  @keyframes fasterGradientAnimation {
+    0% {
+      background-position: 0% 50%;
+    }
+
+    50% {
+      background-position: 100% 50%;
+    }
+
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  .botones_top {
+    margin-bottom: 45px;
+  }
+
+  .form-direc {
+    font-family: "Roboto", sans-serif;
+    margin-bottom: 20px;
+  }
+
+  .form-direc label {
+    font-size: 16px;
+    font-weight: 500;
+    color: #d1d1d1;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .direccion-filter,
+  .direccion-text,
+  .form-direc select {
+    font-family: "Roboto", sans-serif;
+    padding: 10px 15px;
+    border: 1px solid #5b5f6b;
+    border-radius: 4px;
+    font-size: 14px;
+    color: #d1d1d1;
+    background-color: #2d2f3a;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    margin-bottom: 10px;
+    width: 100%;
+  }
+
+  .direccion-filter:focus,
+  .direccion-text:focus,
+  .form-direc select:focus {
+    border-color: #4c9caf;
+    box-shadow: 0 0 8px rgba(76, 156, 175, 0.3);
+    outline: none;
+  }
+
+  .inline-container {
+    display: flex;
+    gap: 10px;
+  }
+
+  .form-direc select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;base64,...");
+    /* Agregar ícono de flecha para select */
+    background-repeat: no-repeat;
+    background-position: right 15px center;
+    background-size: 12px;
+  }
+
+  .direccion-text {
+    display: none;
+  }
+
+  .custom-file-input {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 300px;
+    /* Ancho ajustado a 300px */
+    border: 1px solid #5b5f6b;
+    border-radius: 0px;
+    padding: 10px;
+    background-color: #2d2f3a;
+  }
+
+  .custom-file-input i {
+    margin-right: 10px;
+    color: #d1d1d1;
+  }
+
+  .custom-file-input input[type="file"] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .custom-file-input span {
+    font-size: 14px;
+    color: #d1d1d1;
+    margin-left: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .eliminar-preview,
+  .eliminar-imagen {
+    background-color: #993b3b;
+    color: #ffffff;
+    padding: 5px 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-top: 10px;
+    transition: background-color 0.3s ease;
+  }
+
+  .eliminar-preview:hover,
+  .eliminar-imagen:hover {
+    background-color: #b94c4c;
+  }
+
+  .form-foto-container {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    /* Espacio entre los elementos */
+    align-items: flex-start;
+    /* Alinear todos los elementos al inicio */
+  }
+
+  .form-foto {
+    width: 300px;
+  }
+
+  .divisor2 hr {
+    margin: 20px 0 0;
+    border: none;
+    border-top: 5px solid #232531;
+    opacity: 0.7;
+  }
+
+  #addressFilter {
+    width: 100px;
+  }
+
+  #tituloImagen {
+    display: block;
+    margin: 0 auto;
+    max-width: 300px;
+    width: 100%;
+    height: auto;
+  }
+
+  #search-reportes::placeholder {
+    color: #3a3a46;
+    font-style: italic;
+  }
+
+  #addressFilter::placeholder {
+    color: #3a3a46;
+    font-style: italic;
+  }
+
+  #seccionDestino {
+    visibility: hidden;
+  }
+
+  #bajarDestino {
+    visibility: hidden;
+  }
+
+  #botonSubir {
+    background: linear-gradient(45deg, #787f99, #5a6173, #3c4351);
+    background-size: 200% 200%;
+    color: #ffffff;
+   border-radius: 0 4px 4px 0 !important;
+    width: 95px;
+    transition: background-position 0.3s ease;
+  }
+
+  #botonSubir:hover {
+    animation: fasterGradientAnimation 2s ease infinite;
+  }
+
+  @keyframes fasterGradientAnimation {
+    0% {
+      background-position: 0% 50%;
+    }
+
+    50% {
+      background-position: 100% 50%;
+    }
+
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  #botonBajar {
+    background: linear-gradient(45deg, #787f99, #5a6173, #3c4351);
+    background-size: 200% 200%;
+    color: #ffffff;
+    border-radius: 0 4px 4px 0 !important;
+    width: 95px;
+    transition: background-position 0.3s ease;
+  }
+
+  #botonBajar:hover {
+    animation: fasterGradientAnimation 2s ease infinite;
+  }
+
+  @keyframes fasterGradientAnimation {
+    0% {
+      background-position: 0% 50%;
+    }
+
+    50% {
+      background-position: 100% 50%;
+    }
+
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  #progress-container {
+    width: 100%;
+    height: auto;
+    border-radius: 0px;
+    /* Bordes más redondeados */
+    margin-top: 20px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    /* Sombra más suave y definida */
+    display: none;
+    background-color: #1c1e29;
+    /* Fondo más oscuro para el contenedor */
+  }
+
+  #progress-bar {
+    position: relative;
+    width: 0%;
+    /* Iniciar en 0% para mostrar progreso */
+    height: 100%;
+    /* Ocupa todo el alto del contenedor */
+    background-color: rgb(137, 168, 68);
+    border-radius: 0px;
+    /* Bordes redondeados */
+    overflow: hidden;
+    padding-top: 6px;
+    transition: width 0.3s ease;
+    /* Animación suave para el progreso */
+  }
+
+  #progress-bar span {
+    position: absolute;
+    top: 50%;
+    /* Centrado verticalmente */
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 14px;
+    /* Tamaño de fuente más grande */
+    font-family: "Roboto", sans-serif;
+    font-weight: 500;
+    /* Peso de fuente más grande */
+    color: #fff;
+    /* Color de texto blanco para mejor legibilidad */
+    text-align: center;
+    white-space: nowrap;
+    padding: 0px 10px;
+  }
+
+  #select-reportes {
+    width: 330px;
+  }
+
+  #form-reporte {
+    background-color: #333645;
+    padding: 20px;
+    border-radius: 4px;
+    margin-top: 20px;
+    padding-top: 45px;
+  }
+
+  #fecha {
+    width: 228px;
+  }
+
+  #botones_pie {
+    margin-top: 45px;
+    margin-bottom: 20px;
+  }
+
+  #nueva-direccion {
+    width: 510px;
+  }
+
+  #cargarReporte {
+    background: linear-gradient(45deg, #8e44ad, #71368a, #56307c);
+    background-size: 200% 200%;
+    color: #ffffff;
+    border: none;
+    padding: 9px 20px;
+    font-size: 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-position 0.3s ease;
+    margin-top: -10px;
+    margin-left: 9px;
+  }
+
+  #cargarReporte:hover {
+    animation: fasterGradientAnimation 2s ease infinite;
+  }
+
+  @keyframes fasterGradientAnimation {
+    0% {
+      background-position: 0% 50%;
+    }
+
+    50% {
+      background-position: 100% 50%;
+    }
+
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  #search-reportes {
+    width: 100px;
+  }
+
+  #nombre {
+    width: 228px;
+    margin-bottom: 20px;
+  }
+
+  #agregarSeccion {
+    background: linear-gradient(45deg, #8a2c02, #a34802, #b96002);
+    background-size: 200% 200%;
+    color: #fff;
+    position: relative;
+    /*right: 30%;*/
+    width: 165px;
+    transition: background-position 2s ease;
+    border-radius: 4px 0 0 4px;
+  }
+
+  #agregarSeccion:hover {
+    animation: fasterGradientAnimation 2s ease infinite;
+  }
+
+  @keyframes fasterGradientAnimation {
+    0% {
+      background-position: 0% 50%;
+    }
+
+    50% {
+      background-position: 100% 50%;
+    }
+
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  #guardarDireccion {
+    background: linear-gradient(45deg, #787f99, #5a6173, #3c4351);
+    background-size: 200% 200%;
+    color: #fff;
+    margin-top: 10px;
+    margin-left: 9px;
+    transition: background-position 0.3s ease;
+  }
+
+  #guardarDireccion:hover {
+    animation: fasterGradientAnimation 2s ease infinite;
+  }
+
+  @keyframes fasterGradientAnimation {
+    0% {
+      background-position: 0% 50%;
+    }
+
+    50% {
+      background-position: 100% 50%;
+    }
+
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+  
+</style>
+
 
 </head>
 
@@ -1219,11 +1507,18 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 <!-- Formulario principal -->
                 <form action="" method="POST" enctype="multipart/form-data" id="form-reporte">
 
-                    <div style="position: relative;">
-                        <button type="submit" name="generar_pdf" class="btn-generar-pdf"><i class="fas fa-file-pdf"></i> Generar PDF</button>
+                    <div style="position: relative;" class="botones_top">
+                        <button type="submit" name="guardar_reporte" class="g2_reporte">
+                            <i class="fas fa-save"></i> Guardar Reporte
+                        </button>
+                        <button type="submit" name="generar_pdf" class="btn-generar-pdf">
+                            <i class="fas fa-file-pdf"></i> Generar PDF
+                        </button>
 
                         <button id="botonBajar"><i class="fas fa-arrow-down"></i> Bajar</button>
                     </div>
+
+
 
                     <hr style="margin: 25px 0; border: none; border-top: 2px solid #232531; opacity: 0.7;" />
 
@@ -1232,12 +1527,12 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
 
                     <div class="fecha">
 
-                        <label for="fecha">Fecha:</label>
+                        <label for="fecha">Fecha</label>
                         <input type="date" name="fecha" required id="fecha">
                     </div>
 
                     <div class="nombre">
-                        <label for="nombre">Nombre:</label>
+                        <label for="nombre">Nombre</label>
                         <input type="text" name="nombre" required id="nombre">
                     </div>
 
@@ -1251,67 +1546,75 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
 
                     </div>
 
-                    <!-- Botón para agregar una nueva sección -->
-                    <div id="botones_pie"> <button type="button" id="agregarSeccion"><i class="fas fa-plus"></i> Agregar Sección</button>
-                        <!-- Botón para guardar dirección nueva -->
-                        <button type="submit" name="guardar_reporte"><i class="fas fa-save"></i> Guardar Reporte</button>
-                        <button id="botonSubir"><i class="fas fa-arrow-up"></i> Subir</button><a id="bajarDestino">bajar</a>
-
-                </form>
-
-
-                <!-- Barra de progreso -->
-                <div id="progress-container" style="width: 100%; background-color: #ddd; display: none;">
-                    <div id="progress-bar" style="width: 0%; height: 30px; background-color: #4CAF50; text-align: center; color: white;">
-                        0%
+                    <!-- Contenedor botones_pie con botones alineados a la izquierda y derecha -->
+                    <div id="botones_pie" style="display: flex; align-items: center; gap: 4px; width: 100%;">
+                        <!-- Botones alineados a la izquierda -->
+                        <button type="button" id="agregarSeccion">
+                            <i class="fas fa-plus"></i> Agregar Sección
+                        </button>
+                        <button type="submit" name="guardar_reporte" class="g_reporte">
+                            <i class="fas fa-save"></i> Guardar Reporte
+                        </button>
+                        <button type="submit" name="generar_pdf" class="btn-generar-pdf">
+                            <i class="fas fa-file-pdf"></i> Generar PDF
+                        </button>
+                        <button id="botonSubir">
+                            <i class="fas fa-arrow-up"></i> Subir
+                        </button>
+                        <a id="bajarDestino">bajar</a>
                     </div>
-                </div>
 
-            </div>
+                    <!-- Barra de progreso debajo de los botones -->
+                    <div id="progress-container" style="width: 100%; background-color: #ddd; display: none; margin-top: 10px;">
+                        <div id="progress-bar" style="width: 0%; height: 30px; background-color: #4CAF50; text-align: center; color: white;">
+                            0%
+                        </div>
+                    </div>
 
-
-
-
-            <div class="direccion">
-                <label for="nueva-direccion">Guardar Nueva Dirección:</label>
-                <input type="text" id="nueva-direccion" placeholder="Guardar nueva dirección">
-                <button type="button" id="guardarDireccion"><i class="fas fa-map-marker-alt"></i> Guardar Dirección</button>
-
-                <label for="borrar-direccion">Eliminar Dirección:</label>
-                <form method="POST" action="" style="display: flex; align-items: center; gap: 10px;">
-                    <input type="text" id="addressFilter" placeholder="Filtro" oninput="filterAddresses()" class="styled-input" />
-
-                    <select name="address_id" id="addressSelect" class="styled-select">
-                        <!-- Opción vacía predeterminada -->
-                        <option value="" disabled selected>Seleccione una dirección</option>
-                        <?php
-                        // Consultar todas las direcciones de la base de datos para mostrarlas en el selector
-                        $conn = getDatabaseConnection();
-                        $result = $conn->query("SELECT id, direccion FROM direcciones");
-
-                        // Generar las opciones del selector con cada dirección
-                        while ($row = $result->fetch_assoc()) {
-                            echo "<option value='" . $row['id'] . "'>" . htmlspecialchars($row['direccion']) . "</option>";
-                        }
-                        $conn->close();
-                        ?>
-                    </select>
-
-                    <button type="submit" name="delete_address" class="delete-button">
-                        <i class="fa fa-trash"></i> <!-- Icono de "papelera" Font Awesome -->
-                        Eliminar Dirección
-                    </button>
                 </form>
+
+                <div class="direccion">
+                    <label for="nueva-direccion">Guardar Nueva Dirección</label>
+                    <input type="text" id="nueva-direccion" placeholder="Guardar nueva dirección">
+                    <button type="button" id="guardarDireccion"><i class="fas fa-map-marker-alt"></i> Guardar Dirección</button>
+
+                    <label for="borrar-direccion">Eliminar Dirección</label>
+                    <form method="POST" action="" style="display: flex; align-items: center; gap: 10px;">
+                        <input type="text" id="addressFilter" placeholder="Filtro" oninput="filterAddresses()" class="styled-input" />
+
+                        <select name="address_id" id="addressSelect" class="styled-select">
+                            <!-- Opción vacía predeterminada -->
+                            <option value="" disabled selected>Seleccione una dirección</option>
+                            <?php
+                            // Consultar todas las direcciones de la base de datos para mostrarlas en el selector
+                            $conn = getDatabaseConnection();
+                            $result = $conn->query("SELECT id, direccion FROM direcciones");
+
+                            // Generar las opciones del selector con cada dirección
+                            while ($row = $result->fetch_assoc()) {
+                                echo "<option value='" . $row['id'] . "'>" . htmlspecialchars($row['direccion']) . "</option>";
+                            }
+                            $conn->close();
+                            ?>
+                        </select>
+
+                        <button type="submit" name="delete_address" class="delete-button">
+                            <i class="fa fa-trash"></i> <!-- Icono de "papelera" Font Awesome -->
+                            Eliminar Dirección
+                        </button>
+
+                    </form>
+
+                </div>
 
             </div>
 
         </div>
 
     </div>
-    </div>
-
 
     </div>
+
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -1330,8 +1633,7 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
             <input type="hidden" name="id_seccion[]" value="">
             <div class="form-seccion">
                 <label for="seccion">Sección:</label>
-                <input type="text" name="seccion[]" required>
-                <select class="selector-items">
+                <select class="selector-items" name="seccion[]">
                     <option value="">-- Seleccionar Item --</option>
                     <option value="Mobiliario Urbano">Mobiliario Urbano</option>
                     <option value="Mobiliario Digital">Mobiliario Digital</option>
@@ -1348,33 +1650,52 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 <textarea name="descripcion[]"></textarea>
             </div>
             <div class="form-direc">
-                <label for="direccion">Dirección:</label>
-                <input type="text" class="direccion-filter" placeholder="Filtro" oninput="filtrarDirecciones(this)">
-                <select name="direccion[]" onchange="mostrarDireccion(this)">
-                    <option value="">-- Seleccionar Dirección --</option>
-                    <?php foreach ($direcciones as $direccion): ?>
-                        <option value="<?php echo htmlspecialchars($direccion); ?>"><?php echo htmlspecialchars($direccion); ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <input type="text" class="direccion-text" readonly>
-            </div>
-            <div class="form-foto">
-                <label for="foto1">Foto 1:</label>
-                <input type="file" name="foto1[]" accept="image/*" id="foto1" onchange="previewImage(this); toggleDeleteButton(this, 'eliminarImagen1')">
-                <div class="preview"></div>
-            </div>
-            <div class="form-foto">
-                <label for="foto2">Foto 2:</label>
-                <input type="file" name="foto2[]" accept="image/*" id="foto2" onchange="previewImage(this); toggleDeleteButton(this, 'eliminarImagen2')">
-                <div class="preview"></div>
-            </div>
-            <button type="button" class="eliminar-Seccion">Eliminar Sección</button>
-            <hr style="margin: 25px 0; border: none; border-top: 2px solid #232531; opacity: 0.7;" />
+    <label for="direccion">Dirección:</label>
+    <div class="inline-container">
+        <input type="text" class="direccion-filter" placeholder="Filtro" oninput="filtrarDirecciones(this)">
+        <select name="direccion[]" onchange="mostrarDireccion(this)">
+            <option value="">-- Seleccionar Dirección --</option>
+            <?php foreach ($direcciones as $direccion): ?>
+                <option value="<?php echo htmlspecialchars($direccion); ?>"><?php echo htmlspecialchars($direccion); ?></option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <input type="text" class="direccion-text" readonly>
+</div>
+
+            <div class="form-foto-container">
+    <div class="form-foto">
+        <label for="foto1">Foto 1:</label>
+        <div class="custom-file-input">
+            <i class="fa fa-upload" aria-hidden="true"></i>
+            <input type="file" name="foto1[]" accept="image/*" id="foto1" onchange="handleFileChange(this, 'file-text-foto1'); previewImage(this); toggleDeleteButton(this, 'eliminarImagen1')">
+            <span id="file-text-foto1">Por favor, selecciona un archivo</span>
+        </div>
+        <div class="preview">
+            <button type="button" class="eliminar-preview" style="display: none;">X</button>
+        </div>
+    </div>
+    <div class="form-foto">
+        <label for="foto2">Foto 2:</label>
+        <div class="custom-file-input">
+            <i class="fa fa-upload" aria-hidden="true"></i>
+            <input type="file" name="foto2[]" accept="image/*" id="foto2" onchange="handleFileChange(this, 'file-text-foto2'); previewImage(this); toggleDeleteButton(this, 'eliminarImagen2')">
+            <span id="file-text-foto2">Por favor, selecciona un archivo</span>
+        </div>
+        <div class="preview">
+            <button type="button" class="eliminar-preview" style="display: none;">X</button>
+        </div>
+    </div>
+   <button type="button" class="eliminar-Seccion"> <i class="fa fa-trash" aria-hidden="true"></i> Eliminar Sección </button>
+</div>
+<div class="divisor">
+<hr style="margin: 25px 0; border: none; border-top: 2px solid #232531; opacity: 0.7;" />
+</div>
         `;
                 container.appendChild(nuevaSeccion);
 
                 // Mostrar aviso solo cuando el contador es un múltiplo de 5
-                if (contadorSecciones > 0 && contadorSecciones % 5 === 0) {
+                if (contadorSecciones > 0 && contadorSecciones % 10 === 0) {
                     alert(`Has agregado ${contadorSecciones} secciones, guarda el reporte para continuar.`);
                 }
 
@@ -1458,59 +1779,77 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                                 seccionDiv.classList.add('seccion-group');
 
                                 seccionDiv.innerHTML = `
-                            <input type="hidden" name="id_seccion[]" value="${seccion.id}">
-                            <div class="form-seccion">
-                                <label for="seccion">Sección:</label>
-                                <input type="text" name="seccion[]" value="${escapeHtml(seccion.seccion)}" required>
-                                <select class="selector-items">
-                                    <option value="">-- Seleccionar Item --</option>
-                                    <option value="Mobiliario Urbano">Mobiliario Urbano</option>
-                                    <option value="Mobiliario Digital">Mobiliario Digital</option>
-                                    <option value="Vallas">Vallas</option>
-                                    <option value="Cierre LED">Cierre LED</option>
-                                    <option value="Backlights">Backlights</option>
-                                    <option value="MUDGF">MUDGF</option>
-                                    <option value="Pantalla LED Gran Formato">Pantalla LED Gran Formato</option>
-                                    <option value="AIPC">AIPC</option>
-                                </select>
-                            </div>
-                            <div class="form-descrip">
+        <input type="hidden" name="id_seccion[]" value="${seccion.id}">
+        <div class="form-seccion">
+            <label for="seccion">Sección:</label>
+            <select class="selector-items" name="seccion[]">
+                <option value="">-- Seleccionar Item --</option>
+                <option value="Mobiliario Urbano" ${seccion.seccion === 'Mobiliario Urbano' ? 'selected' : ''}>Mobiliario Urbano</option>
+                <option value="Mobiliario Digital" ${seccion.seccion === 'Mobiliario Digital' ? 'selected' : ''}>Mobiliario Digital</option>
+                <option value="Vallas" ${seccion.seccion === 'Vallas' ? 'selected' : ''}>Vallas</option>
+                <option value="Cierre LED" ${seccion.seccion === 'Cierre LED' ? 'selected' : ''}>Cierre LED</option>
+                <option value="Backlights" ${seccion.seccion === 'Backlights' ? 'selected' : ''}>Backlights</option>
+                <option value="MUDGF" ${seccion.seccion === 'MUDGF' ? 'selected' : ''}>MUDGF</option>
+                <option value="Pantalla LED Gran Formato" ${seccion.seccion === 'Pantalla LED Gran Formato' ? 'selected' : ''}>Pantalla LED Gran Formato</option>
+                <option value="AIPC" ${seccion.seccion === 'AIPC' ? 'selected' : ''}>AIPC</option>
+            </select>
+        </div>
+   <div class="form-descrip">
                                 <label for="descripcion">Descripción:</label>
                                 <textarea name="descripcion[]">${escapeHtml(seccion.descripcion)}</textarea>
                             </div>
                             <div class="form-direc">
-                                <label for="direccion">Dirección:</label>
-                                <input type="text" class="direccion-filter" placeholder="Filtro" oninput="filtrarDirecciones(this)">
-                                <select name="direccion[]" onchange="mostrarDireccion(this)">
-                                    <option value="">-- Seleccionar Dirección --</option>
-                                    <?php foreach ($direcciones as $direccion): ?>
-                                        <option value="<?php echo htmlspecialchars($direccion); ?>" ${seccion.direccion === '<?php echo htmlspecialchars($direccion); ?>' ? 'selected' : ''}>
-                                            <?php echo htmlspecialchars($direccion); ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <input type="text" class="direccion-text" value="${escapeHtml(seccion.direccion)}" readonly>
-                            </div>
-                            <div class="form-foto">
-                                <label for="foto1">Foto 1:</label>
-                                <input type="file" name="foto1[]" accept="image/*" onchange="previewImage(this)">
-                                <div class="preview">
-                                    ${seccion.foto1 ? `<img src="${escapeHtml(seccion.foto1)}" alt="Imagen 1">
-                                                       <button type="button" class="eliminar-imagen" data-id="${seccion.id}" data-foto="foto1">X</button>` : ''}
-                                    <button type="button" class="eliminar-preview" style="display: none;">X</button>
-                                </div>
-                            </div>
-                            <div class="form-foto">
-                                <label for="foto2">Foto 2:</label>
-                                <input type="file" name="foto2[]" accept="image/*" onchange="previewImage(this)">
-                                <div class="preview">
-                                    ${seccion.foto2 ? `<img src="${escapeHtml(seccion.foto2)}" alt="Imagen 2">
-                                                       <button type="button" class="eliminar-imagen" data-id="${seccion.id}" data-foto="foto2">X</button>` : ''}
-                                    <button type="button" class="eliminar-preview" style="display: none;">X</button>
-                                </div>
-                            </div>
-                            <button type="button" class="eliminarSeccion" onclick="eliminarSeccion(${seccion.id}, this)">Eliminar Sección</button>
-                            <hr style="margin: 25px 0; border: none; border-top: 2px solid #232531; opacity: 0.7;" />
+    <label for="direccion">Dirección:</label>
+    <div style="display: flex; gap: 10px;">
+        <input type="text" class="direccion-filter" placeholder="Filtro" oninput="filtrarDirecciones(this)">
+        <select name="direccion[]" onchange="mostrarDireccion(this)">
+            <option value="">-- Seleccionar Dirección --</option>
+            <?php foreach ($direcciones as $direccion): ?>
+                <option value="<?php echo htmlspecialchars($direccion); ?>" ${seccion.direccion === '<?php echo htmlspecialchars($direccion); ?>' ? 'selected' : ''}>
+                    <?php echo htmlspecialchars($direccion); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <input type="text" class="direccion-text" value="${escapeHtml(seccion.direccion)}" readonly>
+</div>
+
+<div class="form-foto-container">
+    <div class="form-foto">
+        <label for="foto1">Foto 1:</label>
+        <div class="custom-file-input">
+            <i class="fa fa-upload" aria-hidden="true"></i>
+            <input type="file" name="foto1[]" accept="image/*" onchange="handleFileChange(this, 'file-text-foto1'); previewImage(this)">
+            <span id="file-text-foto1">Por favor, selecciona un archivo</span>
+        </div>
+        <div class="preview">
+            ${seccion.foto1 ? `<img src="${escapeHtml(seccion.foto1)}" alt="Imagen 1">
+            <button type="button" class="eliminar-imagen" data-id="${seccion.id}" data-foto="foto1">X</button>` : ''}
+            <button type="button" class="eliminar-preview" style="display: none;">X</button>
+        </div>
+    </div>
+    <div class="form-foto">
+        <label for="foto2">Foto 2:</label>
+        <div class="custom-file-input">
+            <i class="fa fa-upload" aria-hidden="true"></i>
+            <input type="file" name="foto2[]" accept="image/*" onchange="handleFileChange(this, 'file-text-foto2'); previewImage(this)">
+            <span id="file-text-foto2">Por favor, selecciona un archivo</span>
+        </div>
+        <div class="preview">
+            ${seccion.foto2 ? `<img src="${escapeHtml(seccion.foto2)}" alt="Imagen 2">
+            <button type="button" class="eliminar-imagen" data-id="${seccion.id}" data-foto="foto2">X</button>` : ''}
+            <button type="button" class="eliminar-preview" style="display: none;">X</button>
+        </div>
+    </div>
+    <button type="button" class="eliminarSeccion" onclick="eliminarSeccion(${seccion.id}, this)"> <i class="fa fa-trash" aria-hidden="true"></i> Eliminar Sección </button>
+</div>
+
+<!-- Agregar divisor después del contenedor -->
+<div class="divisor2">
+    <hr style="margin: 0 0 0 0; border: none; border-top: 2px solid #232531; opacity: 0.7;" />
+</div>
+
+
                         `;
 
                                 // Aquí asignamos el valor seleccionado del selector de ítems
@@ -1770,7 +2109,6 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
         }
 
 
-
         // Función para verificar la conexión a Internet
         function checkInternetConnection() {
             const saveButton = document.getElementById('guardar_reporte');
@@ -1809,9 +2147,13 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
         });
 
 
-        // Función para mostrar la previsualización de la imagen y eliminarla
+        function handleFileChange(input, textId) {
+            const fileName = input.files.length > 0 ? input.files[0].name : 'Por favor, selecciona un archivo';
+            document.getElementById(textId).textContent = fileName;
+        }
+
         function previewImage(input) {
-            const previewDiv = input.nextElementSibling;
+            const previewDiv = input.parentElement.nextElementSibling;
             const file = input.files[0];
 
             // Seleccionar o crear el botón "Eliminar Preview"
@@ -1859,10 +2201,30 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                             previewDiv.removeChild(imgElement); // Eliminar la imagen del preview
                         }
                         eliminarPreviewButton.style.display = 'none'; // Ocultar el botón
+                        document.getElementById(textId).textContent = 'Por favor, selecciona un archivo';
                     };
                 };
                 reader.readAsDataURL(file);
             }
+        }
+
+        function toggleDeleteButton(input, buttonId) {
+            const deleteButton = document.getElementById(buttonId);
+            if (input.files.length > 0) {
+                deleteButton.style.display = 'inline';
+            } else {
+                deleteButton.style.display = 'none';
+            }
+        }
+
+        function removeImage(button) {
+            const previewDiv = button.parentElement;
+            previewDiv.innerHTML = '';
+            const fileInput = previewDiv.previousElementSibling.querySelector('input[type="file"]');
+            fileInput.value = '';
+            const placeholderText = fileInput.nextElementSibling;
+            placeholderText.textContent = 'Por favor, selecciona un archivo';
+            button.style.display = 'none';
         }
 
         // Función filtro de direcciones para eliminar
@@ -1884,6 +2246,14 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 }
             }
         }
+
+
+        window.addEventListener('load', function() {
+            document.querySelectorAll('.eliminar-imagen').forEach(button => {
+                button.style.display = 'block';
+            });
+        });
+        
     </script>
 
 </body>
