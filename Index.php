@@ -1626,6 +1626,8 @@ echo $fecha . "<br>";
 </div>
 <div class="divisor">
 <div class="line"></div>
+
+
 </div>
         `;
                 container.appendChild(nuevaSeccion);
