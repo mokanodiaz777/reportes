@@ -14,6 +14,12 @@ header("Pragma: no-cache");
 header("Expires: Sat, 01 Jan 2000 00:00:00 GMT");
 
 require_once('tcpdf/tcpdf.php');
+require_once 'vendor/autoload.php';
+
+use PhpOffice\PhpPresentation\PhpPresentation;
+use PhpOffice\PhpPresentation\IOFactory;
+use PhpOffice\PhpPresentation\Style\Alignment;
+use PhpOffice\PhpPresentation\Style\Color;
 
 function getDatabaseConnection()
 {
@@ -46,7 +52,6 @@ function getDatabaseConnection()
 }
 
 $conn = getDatabaseConnection();
-
 
 function checkAndReconnect(&$conn)
 {
@@ -91,8 +96,6 @@ $uploadDir = 'uploads/';
 if (!is_dir($uploadDir)) {
     mkdir($uploadDir, 0755, true);
 }
-
-
 
 function compressImage($source, $destination, $quality = 80, $maxWidth = 800, $maxHeight = 600)
 {
@@ -173,8 +176,6 @@ function compressImage($source, $destination, $quality = 80, $maxWidth = 800, $m
 
     return $result;
 }
-
-
 
 // Guardar nueva dirección
 if (isset($_POST['guardar_direccion'])) {
@@ -271,7 +272,6 @@ if (isset($_GET['action']) && $_GET['action'] == 'upload_image') {
     }
     exit;
 }
-
 
 // Guardar reporte
 if (isset($_POST['guardar_reporte'])) {
@@ -401,7 +401,6 @@ if (isset($_POST['guardar_reporte'])) {
     }
 }
 
-
 // Función para manejar la carga de imágenes
 function handleImageUpload($imageName, $tempPath, $existingPath, $section, $maxFileSize)
 {
@@ -449,8 +448,6 @@ function handleImageUpload($imageName, $tempPath, $existingPath, $section, $maxF
     return $existingPath; // Retornar la ruta existente si no hay nueva imagen
 }
 
-
-
 // Cargar todos los reportes para mostrar en un select
 
 checkAndReconnect($conn);
@@ -474,6 +471,237 @@ if ($stmt) {
 }
 
 
+if (isset($_POST['eliminar_reporte'])) {
+    $id_reporte_eliminar = $_POST['id_reporte_eliminar'];
+
+    if ($id_reporte_eliminar) {
+        $conn = getDatabaseConnection();
+
+        // Iniciar transacción
+        $conn->begin_transaction();
+
+        try {
+            // Eliminar las secciones relacionadas
+            $delete_secciones_sql = "DELETE FROM secciones WHERE reporte_id = ?";
+            $stmt_delete_secciones = $conn->prepare($delete_secciones_sql);
+            $stmt_delete_secciones->bind_param("i", $id_reporte_eliminar);
+            $stmt_delete_secciones->execute();
+            $stmt_delete_secciones->close();
+
+            // Eliminar el reporte
+            $delete_reporte_sql = "DELETE FROM reportes_2024 WHERE id = ?";
+            $stmt_delete_reporte = $conn->prepare($delete_reporte_sql);
+            $stmt_delete_reporte->bind_param("i", $id_reporte_eliminar);
+            $stmt_delete_reporte->execute();
+            $stmt_delete_reporte->close();
+
+            // Confirmar transacción
+            $conn->commit();
+
+            // Redirigir a "reporte_borrado.html" después de eliminar exitosamente
+            header("Location: reporte_borrado.html");
+            exit();
+
+            // Establecer mensaje de éxito
+            $mensaje_eliminar_reporte = "<p style='color: green; text-align: center;'>Reporte eliminado exitosamente.</p>";
+        } catch (Exception $e) {
+            // Revertir transacción
+            $conn->rollback();
+
+            // Establecer mensaje de error
+            $mensaje_eliminar_reporte = "<p style='color: red; text-align: center;'>Error al eliminar el reporte: " . $e->getMessage() . "</p>";
+        } finally {
+            $conn->close();
+        }
+    }
+}
+
+// Función para generar el PPTX
+function generarPPTX($reporte, $secciones)
+{
+    // Crear una nueva presentación
+    $ppt = new PhpPresentation();
+
+    // Crear la primera diapositiva (portada)
+    $slide = $ppt->getActiveSlide();
+
+    // Establecer la imagen de fondo para la portada
+    $slide->createDrawingShape()
+        ->setName('Portada Background')
+        ->setDescription('Portada Fondo')
+        ->setPath('images/portada-full3.jpg') // Imagen de fondo
+        ->setHeight(720) // Aseguramos que se ajuste al tamaño predeterminado
+        ->setWidth(960)
+        ->setOffsetX(0)
+        ->setOffsetY(0);
+
+    // Título de la portada
+    $shapeTitulo = $slide->createRichTextShape()
+        ->setHeight(100)
+        ->setWidth(600)
+        ->setOffsetX(200)
+        ->setOffsetY(377); // Ajusta la posición vertical del título
+    $shapeTitulo->getActiveParagraph()->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+    $textRunTitulo = $shapeTitulo->createTextRun($reporte['nombre']);
+
+    // Estilos del título
+    $textRunTitulo->getFont()->setBold(true)
+        ->setSize(22) // Ajuste del tamaño de la fuente
+        ->setColor(new Color('FF333333')) // Color de la fuente (negro)
+        ->setName('Arial'); // Establecer la fuente a Arial
+
+    // Fecha en la portada
+    $shapeFecha = $slide->createRichTextShape()
+        ->setHeight(30) // Ajustar la altura de la fecha
+        ->setWidth(600) // Ajustar el ancho de la fecha
+        ->setOffsetX(438) // Ajustar posición horizontal
+        ->setOffsetY(418); // Ajustar posición vertical de la fecha
+
+    $textRunFecha = $shapeFecha->createTextRun('Fecha: ' . $reporte['fecha']);
+
+    // Estilos de la fecha
+    $textRunFecha->getFont()->setSize(10) // Ajuste del tamaño de la fuente
+        ->setColor(new Color('FF555555')) // Color gris
+        ->setName('Arial'); // Establecer la fuente a Arial
+
+    // Agregar cada sección como una diapositiva
+    foreach ($secciones as $seccion) {
+        $slide = $ppt->createSlide();
+
+        // Establecer la imagen de fondo para las diapositivas
+        $slide->createDrawingShape()
+            ->setName('Slide Background')
+            ->setDescription('Fondo Slide')
+            ->setPath('images/fondo-full3.jpg') // Imagen de fondo
+            ->setHeight(720) // Aseguramos que se ajuste al tamaño predeterminado
+            ->setWidth(960)
+            ->setOffsetX(0)
+            ->setOffsetY(0);
+
+        // Título de la sección
+        $shape = $slide->createRichTextShape()
+            ->setHeight(70) // Ajuste en altura
+            ->setWidth(700) // Ajuste en ancho
+            ->setOffsetX(50)
+            ->setOffsetY(40); // Ajuste en posición vertical
+        $shape->getActiveParagraph()->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        $textRun = $shape->createTextRun($seccion['seccion']);
+
+        // Estilo del título con fuente personalizada
+        $textRun->getFont()->setBold(true) // Negrita
+            ->setSize(22) // Tamaño de fuente
+            ->setColor(new Color('FF333333')) // Color (Rojo)
+            ->setName('Arial'); // Fuente personalizada (por ejemplo, Arial)
+
+        // Descripción de la sección
+        $shape = $slide->createRichTextShape()
+            ->setHeight(100) // Ajusta la altura de la descripción
+            ->setWidth(700)  // Ajuste en ancho
+            ->setOffsetX(50)
+            ->setOffsetY(117); // Ajuste en la posición vertical de la descripción
+        $shape->getActiveParagraph()->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        $textRun = $shape->createTextRun($seccion['descripcion']);
+        $textRun->getFont()->setSize(8)
+            ->setColor(new Color('FF555555'))
+            ->setName('Arial'); // Fuente personalizada
+
+
+        // Dirección de la sección
+        if (!empty($seccion['direccion'])) {
+            // Convertir la dirección a mayúsculas
+            $direccionMayusculas = strtoupper($seccion['direccion']);
+
+            // Agregar la dirección de la sección en mayúsculas
+            $shape = $slide->createRichTextShape()
+                ->setHeight(60) // Ajusta la altura de la dirección
+                ->setWidth(700) // Ajuste en ancho
+                ->setOffsetX(50)
+                ->setOffsetY(80); // Ajuste en la posición vertical de la dirección
+            $shape->getActiveParagraph()->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+            $textRun = $shape->createTextRun('' . $direccionMayusculas);
+            $textRun->getFont()->setSize(10)
+                ->setColor(new Color('FF555555'))
+                ->setName('Arial'); // Fuente personalizada
+        }
+
+        // Añadir imágenes
+        $x = 50;
+        $y = 200; // Ajuste en la posición vertical de las imágenes
+        $imageHeight = 250; // Ajuste en la altura de las imágenes
+
+        // Si solo hay una imagen
+        if (!empty($seccion['foto1']) && empty($seccion['foto2'])) {
+            $fixedHeight = 400; // Altura fija de 700px
+            // Obtener las dimensiones de la imagen para calcular la proporción
+            list($originalWidth, $originalHeight) = getimagesize($seccion['foto1']); // Obtener dimensiones originales de la imagen
+
+            // Calcular el ancho proporcional manteniendo la relación de aspecto
+            $imageWidth = ($originalWidth / $originalHeight) * $fixedHeight;
+
+            // Control de la posición
+            $x = isset($seccion['pos_x']) ? $seccion['pos_x'] : (960 - $imageWidth) / 2; // Centrar horizontalmente si no se indica
+            $y = isset($seccion['pos_y']) ? $seccion['pos_y'] : 180; // Control de la posición vertical, por defecto en 180px
+
+            // Añadir la imagen con la altura fija y el ancho proporcional
+            $slide->createDrawingShape()
+                ->setName('Foto 1')
+                ->setDescription('Foto 1')
+                ->setPath($seccion['foto1'])
+                ->setHeight($fixedHeight) // Altura fija
+                ->setWidth($imageWidth)  // Ancho proporcional
+                ->setOffsetX($x)         // Posición horizontal
+                ->setOffsetY($y);        // Posición vertical
+        }
+
+        // Si hay dos imágenes
+        if (!empty($seccion['foto1']) && !empty($seccion['foto2'])) {
+            $totalSpace = 860 - 20; // Ancho total disponible (con espacio entre imágenes)
+            $imageWidth = ($totalSpace / 2); // Ajustar ancho para que ambas imágenes quepan
+            $imageHeight = (720 / 960) * $imageWidth; // Mantener proporción de altura
+
+            // Imagen 1
+            $slide->createDrawingShape()
+                ->setName('Foto 1')
+                ->setDescription('Foto 1')
+                ->setPath($seccion['foto1'])
+                ->setHeight($imageHeight)
+                ->setWidth($imageWidth)
+                ->setOffsetX($x) // Alineación de la primera imagen
+                ->setOffsetY($y);
+
+            // Imagen 2
+            $slide->createDrawingShape()
+                ->setName('Foto 2')
+                ->setDescription('Foto 2')
+                ->setPath($seccion['foto2'])
+                ->setHeight($imageHeight)
+                ->setWidth($imageWidth)
+                ->setOffsetX($x + $imageWidth + 20) // Espacio de 30px entre las imágenes
+                ->setOffsetY($y);
+        }
+    }
+
+    // Crear el nombre del archivo basado en el nombre del reporte
+    $fileName = 'reporte_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $reporte['nombre']) . '.pptx';
+
+    // Configurar encabezados HTTP para la descarga
+    header('Content-Type: application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    header('Content-Disposition: attachment; filename="' . $fileName . '"');
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Expires: 0');
+
+    // Crear el objeto de escritura de PowerPoint
+    $oWriter = IOFactory::createWriter($ppt, 'PowerPoint2007');
+
+    // Generar y enviar el contenido del archivo directamente al navegador
+    ob_start();
+    $oWriter->save('php://output');
+    ob_end_flush();
+
+    // Finalizar el script para evitar que se envíen datos adicionales
+    exit();
+}
+
 // Generador de PDF
 
 function generarPDF($reporte, $secciones)
@@ -496,21 +724,21 @@ function generarPDF($reporte, $secciones)
     $pdf->AddPage(); // Añade una nueva página
 
     // Agregar la imagen de fondo para la portada
-    $pdf->Image('portada-full2.jpg', 0, 0, 297, 210, '', '', '', false, 300, '', false, false, 0, false, false, false);
+    $pdf->Image('images/portada-full2.jpg', 0, 0, 297, 210, '', '', '', false, 300, '', false, false, 0, false, false, false);
 
     // Establecer márgenes para el contenido
     $pdf->SetMargins(15, 0, 0); // Restablecer márgenes
     $pdf->SetAutoPageBreak(TRUE, 0); // Establecer un salto de página automático con un margen inferior
 
     // Ajustar posición del contenido
-    $pdf->SetY(114); // Ajusta la posición vertical del contenido
+    $pdf->SetY(115); // Ajusta la posición vertical del contenido
 
     // Agregar el título y fecha sobre la imagen de fondo
-    $pdf->SetFont('helvetica', 'B', 26);
+    $pdf->SetFont('helvetica', 'B', 22);
     $pdf->Cell(0, 10, $reporte['nombre'], 0, 1, 'C');
     $pdf->SetTextColor(58, 58, 58);
-    $pdf->SetFont('helvetica', 'B', 10);
-    $pdf->Cell(0, 5, 'Fecha: ' . $reporte['fecha'], 0, 1, 'C');
+    $pdf->SetFont('helvetica', 'B', 12);
+    $pdf->Cell(0, 6.5, 'Fecha: ' . $reporte['fecha'], 0, 1, 'C');
 
     $pdf->Ln(10);
 
@@ -532,7 +760,7 @@ function generarPDF($reporte, $secciones)
         $pdf->AddPage(); // Añade una nueva página para la sección
 
         // Agregar la imagen de fondo para las secciones
-        $pdf->Image('fondo-full2.jpg', 0, 0, 297, 210, '', '', '', false, 300, '', false, false, 0, false, false, false);
+        $pdf->Image('images/fondo-full2.jpg', 0, 0, 297, 210, '', '', '', false, 300, '', false, false, 0, false, false, false);
 
         // Establecer márgenes para el contenido
         $pdf->SetMargins(15, 0, 0); // Mantener márgenes
@@ -549,9 +777,9 @@ function generarPDF($reporte, $secciones)
         // Agregar dirección de la sección
         if (!empty($seccion['direccion'])) {
             $pdf->SetTextColor(92, 92, 92);
-            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->SetFont('helvetica', 'B', 8.5);
             $pdf->SetY(21);
-            $pdf->Cell(0, 10, 'Dirección: ' . $seccion['direccion'], 0, 1);
+            $pdf->Cell(0, 10, '' . $seccion['direccion'], 0, 1);
         }
 
         // Agregar descripción de la sección, alineada a la izquierda
@@ -649,6 +877,37 @@ if (isset($_POST['generar_pdf'])) {
     exit();
 }
 
+if (isset($_POST['generar_pptx'])) {
+    $id_reporte = $_POST['id_reporte'];
+
+    // Cargar el reporte y las secciones de la base de datos
+    $sql = "SELECT * FROM reportes_2024 WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $id_reporte);
+    $stmt->execute();
+    $reporte = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    $secciones_sql = "SELECT * FROM secciones WHERE reporte_id = ?";
+    $stmt_secciones = $conn->prepare($secciones_sql);
+    $stmt_secciones->bind_param("i", $id_reporte);
+    $stmt_secciones->execute();
+    $secciones = $stmt_secciones->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt_secciones->close();
+
+    // Generar el PPTX
+    $pptxFile = generarPPTX($reporte, $secciones);
+
+    // Descargar el PPTX
+    header('Content-Description: File Transfer');
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="' . basename($pptxFile) . '"');
+    header('Content-Transfer-Encoding: binary');
+    header('Content-Length: ' . filesize($pptxFile));
+    readfile($pptxFile);
+
+    exit();
+}
 
 // Verificar si se ha enviado una solicitud de eliminación
 if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
@@ -660,7 +919,12 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
     $stmt->bind_param("i", $addressId);
 
     if ($stmt->execute()) {
-        echo "<p>Dirección eliminada correctamente.</p>";
+        // Redirigir a "direccion_borrada.html" después de eliminar exitosamente
+        header("Location: direccion_borrada.html");
+        exit();
+
+        // Eliminar el mensaje de éxito ya que la redirección se encargará de mostrar la nueva página
+        // echo "<p>Dirección eliminada correctamente.</p>";
     } else {
         echo "<p>Error al eliminar la dirección: " . $stmt->error . "</p>"; // Añadí la devolución del error para mayor claridad
     }
@@ -668,6 +932,10 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
     $stmt->close();
     $conn->close();
 }
+
+error_reporting(0);
+$fecha = $_POST["fecha"];
+echo $fecha . "<br>";
 
 
 ?>
@@ -679,796 +947,342 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
     <meta name="robots" content="noindex">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link href='https://fonts.googleapis.com/css?family=Roboto' rel='stylesheet'>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link id="themeStylesheet" rel="stylesheet" href="dark4.css"> <!-- Hoja de estilo por defecto -->
     <title>Generador de Reportes</title>
- <style>
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-
-  body {
-    font-family: "Roboto", sans-serif;
-    background-color: #333645;
-    color: #fff;
-    padding: 20px;
-  }
-
-  .cuerpo {
-    max-width: 1080px;
-    margin: 0 auto;
-    background-color: #1b1b2d;
-    padding: 30px;
-    border-radius: 6px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-  }
-
-  h1 {
-    text-align: center;
-    margin-bottom: 30px;
-    color: #2c3e50;
-  }
-
-  .form-group {
-    margin-bottom: 20px;
-  }
-
-  label {
-    display: block;
-    font-weight: normal;
-    color: #fff;
-    margin-top: 10px;
-    margin-bottom: 10px;
-    font-size: 14px;
-  }
-
-  input[type="text"],
-  input[type="date"],
-  textarea,
-  select {
-    font-family: "Roboto", sans-serif;
-    padding: 10px 15px;
-    border: 1px solid #5b5f6b;
-    /* Bordes más sutiles */
-    border-radius: 4px;
-    font-size: 14px;
-    transition: border-color 0.3s, box-shadow 0.3s;
-    margin-bottom: 10px;
-    width: 228px;
-    background: #2d2f3a;
-    color: #d1d1d1;
-    /* Colores de texto más claros */
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    /* Sombra sutil */
-  }
-
-  input[type="text"]:focus,
-  input[type="date"]:focus,
-  textarea:focus,
-  select:focus {
-    border-color: #4c9caf;
-    /* Color de borde en foco */
-    box-shadow: 0 0 8px rgba(76, 156, 175, 0.15);
-    /* Efecto de foco con la mitad del brillo reducido nuevamente */
-    outline: none;
-    /* Eliminar el borde predeterminado */
-  }
-
-  ::placeholder {
-    color: #a5a5a6;
-  }
-
-  textarea {
-    resize: vertical;
-    min-height: 30px;
-  }
-
-  button {
-    font-family: "Roboto", sans-serif;
-    padding: 9px 20px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: background-color 0.3s, transform 0.2s;
-  }
-
-  button:hover {
-    transform: translateY(0px);
-  }
-
-  .eliminar-Seccion,
-  .eliminarSeccion {
-    background: linear-gradient(135deg, #d9534f, #c9302c);
-  border-radius: 0 4px 4px 0;
-  color: #ffffff;
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: normal;
-  cursor: pointer;
-  transition: background 0.3s ease, transform 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  margin-top: 38px;
-  }
-
-  .eliminar-Seccion:hover,
-  .eliminarSeccion:hover {
-    background: linear-gradient(135deg, #c9302c, #d9534f);
-  }
-
-  .eliminar-preview {
-    background-color: #e6867c;
-    color: #ffffff;
-    padding: 5px 10px;
-    position: relative;
-    top: -50px;
-    left: 260px;
-  }
-
-  .eliminar-preview:hover {
-    background-color: #c0392b;
-  }
-
-  .eliminarImagen:hover {
-    background-color: #c0392b;
-  }
-
-  .eliminar-preview {
-    border-radius: 4px;
-  }
-
-  .preview {
-    margin-top: 10px;
-    position: relative;
-  }
-
-  .preview img {
-    max-width: 300px;
-    height: auto;
-    border-radius: 0px;
-    background: #232531;
-  }
-
-  @media (min-width: 768px) {
-    .form-group {
-      display: flex;
-      align-items: center;
-    }
-
-    .form-group label {
-      flex: 1;
-      margin-bottom: 0;
-    }
-
-    .form-group input[type="text"],
-    .form-group input[type="date"],
-    .form-group textarea,
-    .form-group select {
-      flex: 3;
-    }
-  }
-
-  .direccion {
-    background-color: #393e5e;
-    padding: 20px;
-    border-radius: 4px;
-    margin-top: 20px;
-  }
-
-  .selector_reportes {
-    background-color: #393e5e;
-    padding: 20px;
-    border-radius: 4px;
-    margin-top: 0px;
-    padding-top: 35px;
-    width: 660px;
-  }
-
-  .direccion-filter {
-    width: 100px !important;
-  }
-
-  .eliminar-imagen {
-    background-color: #993b3b;
-    color: #ffffff;
-    border-radius: 6px;
-    /* Bordes más redondeados */
-    padding: 6px 10px;
-    /* Un poco más de padding para mejor apariencia */
-    font-size: 14px;
-    /* Tamaño de fuente uniforme con otros botones */
-    font-family: "Roboto", sans-serif;
-    /* Fuente consistente */
-    border: none;
-    /* Eliminar borde */
-    cursor: pointer;
-    position: relative;
-    top: -50px;
-    left: 260px;
-    transition: background-color 0.3s ease, box-shadow 0.3s ease;
-    /* Suavizar transiciones */
-  }
-
-  .eliminar-imagen:hover {
-    background-color: #b94c4c;
-    /* Color de fondo más claro al pasar el ratón */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    /* Sombra sutil para profundidad */
-  }
-
-  .form-seccion {
-    margin-top: 30px;
-  }
-
-  .btn-generar-pdf {
-    background: linear-gradient(45deg, #4c9caf, #3b7a99, #2b5e74) !important;
-    background-size: 200% 200% !important;
-    color: #ffffff !important;
-    border: none !important;
-    padding: 9px 20px !important;
-    cursor: pointer !important;
-    font-size: 14px !important;
-    border-radius: 0px !important;
-    transition: background-position 0.3s ease !important;
-  }
-
-  .btn-generar-pdf:hover {
-    animation: fasterGradientAnimation 2s ease infinite !important;
-  }
-
-  @keyframes fasterGradientAnimation {
-    0% {
-      background-position: 0% 50%;
-    }
-
-    50% {
-      background-position: 100% 50%;
-    }
-
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  input[type="file"] {
-    padding: 5px 0;
-    background: #232531;
-    padding: 10px;
-    color: #a5a5a6;
-    border-radius: 4px;
-  }
-
-  .direccion-text {
-    width: 600px !important;
-  }
-
-  select {
-    background-color: #1b1b2d !important;
-  }
-
-  .styled-input {
-    padding: 10px 12px;
-    border-radius: 4px;
-    font-size: 16px;
-    outline: none;
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
-    width: 100%;
-    color: #6f6f6e;
-  }
-
-  .styled-input:focus {
-    border-color: #3498db;
-    box-shadow: 0 0 5px rgba(52, 152, 219, 0.3);
-  }
-
-  .styled-select {
-    padding: 10px 12px;
-    color: #d1d1d1;
-    /* Colores de texto más claros */
-    border: 1px solid #5b5f6b;
-    /* Bordes alineados con los otros inputs */
-    border-radius: 4px;
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
-    background-color: #2d2f3a;
-    /* Fondo más oscuro */
-    width: 400px;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    /* Sombra sutil */
-  }
-
-  .styled-select:focus {
-    border-color: #4c9caf;
-    /* Color de borde en foco alineado con los otros inputs */
-    box-shadow: 0 0 8px rgba(76, 156, 175, 0.3);
-    /* Efecto de foco alineado con los otros inputs */
-  }
-
-  .delete-button {
-    background: linear-gradient(45deg, #973b42, #7b2d35, #5e2028);
-    background-size: 200% 200%;
-    color: #fff;
-    border: none;
-    padding: 10px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: normal;
-    transition: background-position 0.3s ease;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    font-family: "Roboto", sans-serif;
-    margin-top: -10px;
-    margin-left: 3px;
-  }
-
-  .delete-button:hover {
-    animation: fasterGradientAnimation 2s ease infinite;
-  }
-
-  @keyframes fasterGradientAnimation {
-    0% {
-      background-position: 0% 50%;
-    }
-
-    50% {
-      background-position: 100% 50%;
-    }
-
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  .direccion-filter::placeholder {
-    color: #3a3a46;
-    font-style: italic;
-  }
-
-  .upload-status {
-    margin-top: 5px;
-    font-size: 0.9em;
-  }
-
-  .g_reporte {
-    margin-right: 0px !important;
-    margin-left: 0px !important;
-    height: 35px !important;
-    background: linear-gradient(45deg, #3b5998, #2b3f6f, #1f2a4a);
-    background-size: 200% 200%;
-    color: white;
-    transition: background-position 2s ease;
-    border-radius: 0 0 0 0;
-  }
-
-  .g_reporte:hover {
-    animation: fasterGradientAnimation 2s ease infinite;
-  }
-  
-  .g2_reporte {
-    margin-right: 0px !important;
-    margin-left: 0px !important;
-    height: 35px !important;
-    background: linear-gradient(45deg, #3b5998, #2b3f6f, #1f2a4a);
-    background-size: 200% 200%;
-    color: white;
-    transition: background-position 2s ease;
-    border-radius: 4px 0 0 4px;
-  }
-
-  .g2_reporte:hover {
-    animation: fasterGradientAnimation 2s ease infinite;
-  }
-
-  @keyframes fasterGradientAnimation {
-    0% {
-      background-position: 0% 50%;
-    }
-
-    50% {
-      background-position: 100% 50%;
-    }
-
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  .botones_top {
-    margin-bottom: 45px;
-  }
-
-  .form-direc {
-    font-family: "Roboto", sans-serif;
-    margin-bottom: 20px;
-  }
-
-  .form-direc label {
-    font-size: 16px;
-    font-weight: 500;
-    color: #d1d1d1;
-    display: block;
-    margin-bottom: 8px;
-  }
-
-  .direccion-filter,
-  .direccion-text,
-  .form-direc select {
-    font-family: "Roboto", sans-serif;
-    padding: 10px 15px;
-    border: 1px solid #5b5f6b;
-    border-radius: 4px;
-    font-size: 14px;
-    color: #d1d1d1;
-    background-color: #2d2f3a;
-    transition: border-color 0.3s, box-shadow 0.3s;
-    margin-bottom: 10px;
-    width: 100%;
-  }
-
-  .direccion-filter:focus,
-  .direccion-text:focus,
-  .form-direc select:focus {
-    border-color: #4c9caf;
-    box-shadow: 0 0 8px rgba(76, 156, 175, 0.3);
-    outline: none;
-  }
-
-  .inline-container {
-    display: flex;
-    gap: 10px;
-  }
-
-  .form-direc select {
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    background-image: url("data:image/svg+xml;base64,...");
-    /* Agregar ícono de flecha para select */
-    background-repeat: no-repeat;
-    background-position: right 15px center;
-    background-size: 12px;
-  }
-
-  .direccion-text {
-    display: none;
-  }
-
-  .custom-file-input {
-    position: relative;
-    display: flex;
-    align-items: center;
-    width: 300px;
-    /* Ancho ajustado a 300px */
-    border: 1px solid #5b5f6b;
-    border-radius: 0px;
-    padding: 10px;
-    background-color: #2d2f3a;
-  }
-
-  .custom-file-input i {
-    margin-right: 10px;
-    color: #d1d1d1;
-  }
-
-  .custom-file-input input[type="file"] {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    cursor: pointer;
-  }
-
-  .custom-file-input span {
-    font-size: 14px;
-    color: #d1d1d1;
-    margin-left: 10px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .eliminar-preview,
-  .eliminar-imagen {
-    background-color: #993b3b;
-    color: #ffffff;
-    padding: 5px 10px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    margin-top: 10px;
-    transition: background-color 0.3s ease;
-  }
-
-  .eliminar-preview:hover,
-  .eliminar-imagen:hover {
-    background-color: #b94c4c;
-  }
-
-  .form-foto-container {
-    display: flex;
-    flex-direction: row;
-    gap: 20px;
-    /* Espacio entre los elementos */
-    align-items: flex-start;
-    /* Alinear todos los elementos al inicio */
-  }
-
-  .form-foto {
-    width: 300px;
-  }
-
-  .divisor2 hr {
-    margin: 20px 0 0;
-    border: none;
-    border-top: 5px solid #232531;
-    opacity: 0.7;
-  }
-
-  #addressFilter {
-    width: 100px;
-  }
-
-  #tituloImagen {
-    display: block;
-    margin: 0 auto;
-    max-width: 300px;
-    width: 100%;
-    height: auto;
-  }
-
-  #search-reportes::placeholder {
-    color: #3a3a46;
-    font-style: italic;
-  }
-
-  #addressFilter::placeholder {
-    color: #3a3a46;
-    font-style: italic;
-  }
-
-  #seccionDestino {
-    visibility: hidden;
-  }
-
-  #bajarDestino {
-    visibility: hidden;
-  }
-
-  #botonSubir {
-    background: linear-gradient(45deg, #787f99, #5a6173, #3c4351);
-    background-size: 200% 200%;
-    color: #ffffff;
-   border-radius: 0 4px 4px 0 !important;
-    width: 95px;
-    transition: background-position 0.3s ease;
-  }
-
-  #botonSubir:hover {
-    animation: fasterGradientAnimation 2s ease infinite;
-  }
-
-  @keyframes fasterGradientAnimation {
-    0% {
-      background-position: 0% 50%;
-    }
-
-    50% {
-      background-position: 100% 50%;
-    }
-
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  #botonBajar {
-    background: linear-gradient(45deg, #787f99, #5a6173, #3c4351);
-    background-size: 200% 200%;
-    color: #ffffff;
-    border-radius: 0 4px 4px 0 !important;
-    width: 95px;
-    transition: background-position 0.3s ease;
-  }
-
-  #botonBajar:hover {
-    animation: fasterGradientAnimation 2s ease infinite;
-  }
-
-  @keyframes fasterGradientAnimation {
-    0% {
-      background-position: 0% 50%;
-    }
-
-    50% {
-      background-position: 100% 50%;
-    }
-
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  #progress-container {
-    width: 100%;
-    height: auto;
-    border-radius: 0px;
-    /* Bordes más redondeados */
-    margin-top: 20px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    /* Sombra más suave y definida */
-    display: none;
-    background-color: #1c1e29;
-    /* Fondo más oscuro para el contenedor */
-  }
-
-  #progress-bar {
-    position: relative;
-    width: 0%;
-    /* Iniciar en 0% para mostrar progreso */
-    height: 100%;
-    /* Ocupa todo el alto del contenedor */
-    background-color: rgb(137, 168, 68);
-    border-radius: 0px;
-    /* Bordes redondeados */
-    overflow: hidden;
-    padding-top: 6px;
-    transition: width 0.3s ease;
-    /* Animación suave para el progreso */
-  }
-
-  #progress-bar span {
-    position: absolute;
-    top: 50%;
-    /* Centrado verticalmente */
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 14px;
-    /* Tamaño de fuente más grande */
-    font-family: "Roboto", sans-serif;
-    font-weight: 500;
-    /* Peso de fuente más grande */
-    color: #fff;
-    /* Color de texto blanco para mejor legibilidad */
-    text-align: center;
-    white-space: nowrap;
-    padding: 0px 10px;
-  }
-
-  #select-reportes {
-    width: 330px;
-  }
-
-  #form-reporte {
-    background-color: #333645;
-    padding: 20px;
-    border-radius: 4px;
-    margin-top: 20px;
-    padding-top: 45px;
-  }
-
-  #fecha {
-    width: 228px;
-  }
-
-  #botones_pie {
-    margin-top: 45px;
-    margin-bottom: 20px;
-  }
-
-  #nueva-direccion {
-    width: 510px;
-  }
-
-  #cargarReporte {
-    background: linear-gradient(45deg, #8e44ad, #71368a, #56307c);
-    background-size: 200% 200%;
-    color: #ffffff;
-    border: none;
-    padding: 9px 20px;
-    font-size: 14px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-position 0.3s ease;
-    margin-top: -10px;
-    margin-left: 9px;
-  }
-
-  #cargarReporte:hover {
-    animation: fasterGradientAnimation 2s ease infinite;
-  }
-
-  @keyframes fasterGradientAnimation {
-    0% {
-      background-position: 0% 50%;
-    }
-
-    50% {
-      background-position: 100% 50%;
-    }
-
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  #search-reportes {
-    width: 100px;
-  }
-
-  #nombre {
-    width: 228px;
-    margin-bottom: 20px;
-  }
-
-  #agregarSeccion {
-    background: linear-gradient(45deg, #8a2c02, #a34802, #b96002);
-    background-size: 200% 200%;
-    color: #fff;
-    position: relative;
-    /*right: 30%;*/
-    width: 165px;
-    transition: background-position 2s ease;
-    border-radius: 4px 0 0 4px;
-  }
-
-  #agregarSeccion:hover {
-    animation: fasterGradientAnimation 2s ease infinite;
-  }
-
-  @keyframes fasterGradientAnimation {
-    0% {
-      background-position: 0% 50%;
-    }
-
-    50% {
-      background-position: 100% 50%;
-    }
-
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  #guardarDireccion {
-    background: linear-gradient(45deg, #787f99, #5a6173, #3c4351);
-    background-size: 200% 200%;
-    color: #fff;
-    margin-top: 10px;
-    margin-left: 9px;
-    transition: background-position 0.3s ease;
-  }
-
-  #guardarDireccion:hover {
-    animation: fasterGradientAnimation 2s ease infinite;
-  }
-
-  @keyframes fasterGradientAnimation {
-    0% {
-      background-position: 0% 50%;
-    }
-
-    50% {
-      background-position: 100% 50%;
-    }
-
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-  
-</style>
-
+    <link rel="icon" href="/images/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
+    <style>
+        .flatpickr-calendar {
+            background-color: #1b1d24;
+            color: #fff;
+            border-radius: 4px;
+            border: 0px;
+
+        }
+
+        .flatpickr-day.inRange,
+        .flatpickr-day.prevMonthDay.inRange,
+        .flatpickr-day.nextMonthDay.inRange,
+        .flatpickr-day.today.inRange,
+        .flatpickr-day.prevMonthDay.today.inRange,
+        .flatpickr-day.nextMonthDay.today.inRange,
+        .flatpickr-day:hover,
+        .flatpickr-day.prevMonthDay:hover,
+        .flatpickr-day.nextMonthDay:hover,
+        .flatpickr-day:focus,
+        .flatpickr-day.prevMonthDay:focus,
+        .flatpickr-day.nextMonthDay:focus {
+            cursor: pointer;
+            outline: 0;
+            background: #393E5E;
+            border: 0px;
+            color: #fff;
+        }
+
+        .flatpickr-day {
+            background: none;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            -webkit-box-sizing: border-box;
+            box-sizing: border-box;
+            color: #fff !important;
+            cursor: pointer;
+            font-weight: 400;
+            width: 14.2857143%;
+            -webkit-flex-basis: 14.2857143%;
+            -ms-flex-preferred-size: 14.2857143%;
+            flex-basis: 14.2857143%;
+            max-width: 39px;
+            height: 39px;
+            line-height: 39px;
+            margin: 0;
+            display: inline-block;
+            position: relative;
+            -webkit-box-pack: center;
+            -webkit-justify-content: center;
+            -ms-flex-pack: center;
+            justify-content: center;
+            text-align: center;
+            font-family: Poppins !important;
+            font-weight: normal;
+            font-size: 90%;
+        }
+
+        .flatpickr-day.selected,
+        .flatpickr-day.startRange,
+        .flatpickr-day.endRange,
+        .flatpickr-day.selected.inRange,
+        .flatpickr-day.startRange.inRange,
+        .flatpickr-day.endRange.inRange,
+        .flatpickr-day.selected:focus,
+        .flatpickr-day.startRange:focus,
+        .flatpickr-day.endRange:focus,
+        .flatpickr-day.selected:hover,
+        .flatpickr-day.startRange:hover,
+        .flatpickr-day.endRange:hover,
+        .flatpickr-day.selected.prevMonthDay,
+        .flatpickr-day.startRange.prevMonthDay,
+        .flatpickr-day.endRange.prevMonthDay,
+        .flatpickr-day.selected.nextMonthDay,
+        .flatpickr-day.startRange.nextMonthDay,
+        .flatpickr-day.endRange.nextMonthDay {
+            background: #333645;
+            -webkit-box-shadow: none;
+            box-shadow: none;
+            color: #fff;
+            border: none;
+            font-family: Poppins !important;
+            font-weight: normal;
+            font-size: 90%;
+        }
+
+        .flatpickr-day.flatpickr-disabled,
+        .flatpickr-day.flatpickr-disabled:hover,
+        .flatpickr-day.prevMonthDay,
+        .flatpickr-day.nextMonthDay,
+        .flatpickr-day.notAllowed,
+        .flatpickr-day.notAllowed.prevMonthDay,
+        .flatpickr-day.notAllowed.nextMonthDay {
+            color: rgba(134, 133, 133, 0.3) !important;
+            background: transparent;
+            border-color: transparent;
+            cursor: default;
+        }
+
+        .flatpickr-months .flatpickr-prev-month,
+        .flatpickr-months .flatpickr-next-month {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            text-decoration: none;
+            cursor: pointer;
+            position: absolute;
+            top: 0;
+            height: 34px;
+            padding: 10px;
+            z-index: 3;
+            color: rgba(255, 251, 251, 0.9);
+            fill: rgba(255, 255, 255, 0.9);
+        }
+
+        span.flatpickr-weekday {
+            cursor: default;
+            font-size: 90%;
+            background: transparent;
+            color: rgb(64, 140, 164);
+            line-height: 1;
+            margin: 0;
+            text-align: center;
+            display: block;
+            -webkit-box-flex: 1;
+            -webkit-flex: 1;
+            -ms-flex: 1;
+            flex: 1;
+            font-weight: normal;
+        }
+
+        .flatpickr-current-month .flatpickr-monthDropdown-months {
+            appearance: menulist;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            box-sizing: border-box;
+            cursor: pointer;
+            font-size: inherit;
+            height: auto;
+            line-height: inherit;
+            margin: -1px 0 0 0;
+            outline: none;
+            padding: 0 0 0 .5ch;
+            position: relative;
+            vertical-align: initial;
+            -webkit-box-sizing: border-box;
+            -webkit-appearance: menulist;
+            -moz-appearance: menulist;
+            width: auto;
+            color: #fff;
+            font-weight: normal;
+            font-size: 14px;
+        }
+
+        .flatpickr-current-month input.cur-year {
+            background: transparent;
+            -webkit-box-sizing: border-box;
+            box-sizing: border-box;
+
+            cursor: text;
+            padding: 0 0 0 .5ch;
+            margin: 0;
+            display: inline-block;
+
+            font-family: inherit;
+            font-weight: normal;
+            line-height: inherit;
+            height: auto;
+            border: 0;
+            border-radius: 0;
+            vertical-align: initial;
+            -webkit-appearance: textfield;
+            -moz-appearance: textfield;
+            appearance: textfield;
+            font-size: 14px;
+            color: #fff;
+        }
+
+        .flatpickr-monthDropdown-months {
+            background-color: #1b1d24 !important;
+        }
+
+        .flatpickr-calendar {
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        .flatpickr-calendar {
+            margin-top: 5px;
+
+        }
+
+        .flatpickr-calendar::before,
+        .flatpickr-calendar::after {
+            display: none !important;
+
+        }
+
+        .flatpickr-calendar {
+            padding: 3px;
+
+            box-sizing: border-box;
+            transform-origin: top left;
+
+        }
+
+
+        /* Estilo del switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+            transform: rotate(180deg);
+        }
+
+        /* Ocultar checkbox */
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        /* Slider del switch */
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #797979;
+            transition: 0.4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: #393E5E;
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(26px);
+        }
+
+
+
+        .hidden {
+            display: none;
+        }
+
+        .preview-container {
+            /* border: 1px solid #ccc; */
+            max-height: 150px;
+            overflow-y: auto;
+            background: #1b1d24;
+            position: absolute;
+            z-index: 1000;
+            width: calc(50% - 20px);
+            margin-top: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            font-size: 12px;
+            border-radius: 4px;
+        }
+
+        .preview-item {
+            padding: 8px 0 8px 12px;
+            cursor: pointer;
+        }
+
+        .preview-item:hover {
+            background-color: #36518c;
+        }
+
+
+        .toggle-btn {
+            background: linear-gradient(45deg, #585858, #7a7a7a, #999999);
+            /* Gradiente de tonos grises */
+            background-size: auto;
+            background-size: 200% 200%;
+            color: #fff;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            border-radius: 0px 0px 4px 4px;
+            position: relative;
+            transition: background-position 2s ease;
+            margin-bottom: 20px;
+        }
+
+        .toggle-btn:hover {
+            background-position: 100% 100%;
+            /* Cambio de posición al hacer hover */
+        }
+
+        .direccion {
+            padding: 0px 0px 10px 20px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+
+        .direccion-contenido {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 1s ease;
+            /* Transición más lenta y suave */
+        }
+
+        .direccion-contenido.visible {
+            max-height: 1000px;
+            /* Ajusta según el contenido */
+        }
+        
+        #form-eliminar-reporte {
+	margin-bottom: 20px;
+}
+    </style>
 
 </head>
 
@@ -1478,29 +1292,41 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
         <div class="center">
 
             <div class="cuerpo">
-                <img src="smreportes.png" alt="Generador de Reportes Fotográficos" id="tituloImagen">
+                <img src="images/smreportes.png" alt="Generador de Reportes Fotográficos" id="tituloImagen">
                 <a id="seccionDestino">subir</a>
 
-                <!-- Campo de búsqueda para reportes -->
+                <!-- Contenedor principal -->
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                    <!-- Contenedor selector_reportes -->
+                    <div class="selector_reportes" style="display: flex; align-items: center; gap: 10px;">
+                        <!-- Campo de búsqueda -->
+                        <div class="buscador" style="display: flex; align-items: center; gap: 5px;">
+                            <input type="text" id="search-reportes" placeholder="Filtro" oninput="filtrarReportesEditar()">
+                        </div>
 
-                <div class="selector_reportes" style="display: flex; align-items: center; gap: 10px;">
-                    <!-- Campo de búsqueda -->
-                    <div class="buscador" style="display: flex; align-items: center; gap: 5px;">
-                        <input type="text" id="search-reportes" placeholder="Filtro" oninput="filtrarReportes()">
-                        </button>
+                        <!-- Selección de reportes para editar -->
+                        <div class="reportes" style="display: flex; align-items: center; gap: 5px;">
+                            <select id="select-reportes">
+                                <option value="">-- Seleccionar Reporte --</option>
+                                <?php while ($row = $reportes->fetch_assoc()): ?>
+                                    <option value="<?php echo $row['id']; ?>">
+                                        <?php echo htmlspecialchars($row['nombre']); ?> - <?php echo htmlspecialchars($row['fecha']); ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            </select>
+                            <button id="cargarReporte">
+                                <i class="fas fa-file-alt"></i> Cargar Reporte
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- Selección de reportes para editar -->
-                    <div class="reportes" style="display: flex; align-items: center; gap: 5px;">
-                        <select id="select-reportes">
-                            <option value="">-- Seleccionar Reporte --</option>
-                            <?php while ($row = $reportes->fetch_assoc()): ?>
-                                <option value="<?php echo $row['id']; ?>"><?php echo htmlspecialchars($row['nombre']); ?> - <?php echo htmlspecialchars($row['fecha']); ?></option>
-                            <?php endwhile; ?>
-                        </select>
-                        <button id="cargarReporte">
-                            <i class="fas fa-file-alt"></i> Cargar Reporte
-                        </button>
+                    <!-- Contenedor del switch con el label -->
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label for="themeSwitch" style="font-size: 14px;">Cambiar tema</label>
+                        <label class="switch">
+                            <input type="checkbox" id="themeSwitch">
+                            <span class="slider"></span>
+                        </label>
                     </div>
                 </div>
 
@@ -1508,6 +1334,10 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 <form action="" method="POST" enctype="multipart/form-data" id="form-reporte">
 
                     <div style="position: relative;" class="botones_top">
+                        <!-- Botón de refrescar fuera del formulario funcionalmente, pero dentro visualmente -->
+                        <button class="refrescar" type="button" onclick="location.reload()" style="position: absolute; top: 0; right: 0px;">
+                            <i class="fa fa-refresh" aria-hidden="true"></i> Refrescar
+                        </button>
                         <button type="submit" name="guardar_reporte" class="g2_reporte">
                             <i class="fas fa-save"></i> Guardar Reporte
                         </button>
@@ -1515,34 +1345,34 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                             <i class="fas fa-file-pdf"></i> Generar PDF
                         </button>
 
+                        <!-- Botón espejo -->
+                        <button type="button" class="btn-pptx" id="mirrorButton">
+                            <i class="fa fa-file-powerpoint" aria-hidden="true"></i>Generar PPTX
+                        </button>
+
                         <button id="botonBajar"><i class="fas fa-arrow-down"></i> Bajar</button>
                     </div>
 
-
-
-                    <hr style="margin: 25px 0; border: none; border-top: 2px solid #232531; opacity: 0.7;" />
-
+                    <div class="line"></div>
 
                     <input type="hidden" name="id_reporte" id="id_reporte">
 
-                    <div class="fecha">
 
-                        <label for="fecha">Fecha</label>
-                        <input type="date" name="fecha" required id="fecha">
+                    <div class="container_fecha">
+                        <div class="nombre">
+                            <label for="nombre">Nombre</label>
+                            <input type="text" name="nombre" required id="nombre">
+                        </div>
+
+                        <div class="fecha">
+                            <label for="fecha">Fecha</label>
+                            <input type="text" id="fecha" name="fecha" required>
+                        </div>
                     </div>
 
-                    <div class="nombre">
-                        <label for="nombre">Nombre</label>
-                        <input type="text" name="nombre" required id="nombre">
-                    </div>
-
-                    <hr style="margin: 25px 0; border: none; border-top: 2px solid #232531; opacity: 0.7;" />
-
-                    <!-- Contenedor de secciones dinámicas -->
+                    <div class="line"></div>
 
                     <div id="secciones-container">
-
-                        <!-- Secciones se cargarán aquí -->
 
                     </div>
 
@@ -1558,6 +1388,16 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                         <button type="submit" name="generar_pdf" class="btn-generar-pdf">
                             <i class="fas fa-file-pdf"></i> Generar PDF
                         </button>
+
+
+                        <!-- Botón original -->
+                        <form id="originalForm" method="POST" action="index.php">
+                            <input type="hidden" name="generar_pptx" value="1">
+                            <button type="submit" class="btn-pptx" id="originalButton">
+                                <i class="fa fa-file-powerpoint" aria-hidden="true"></i>Generar PPTX
+                            </button>
+                        </form>
+
                         <button id="botonSubir">
                             <i class="fas fa-arrow-up"></i> Subir
                         </button>
@@ -1574,39 +1414,70 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 </form>
 
                 <div class="direccion">
-                    <label for="nueva-direccion">Guardar Nueva Dirección</label>
-                    <input type="text" id="nueva-direccion" placeholder="Guardar nueva dirección">
-                    <button type="button" id="guardarDireccion"><i class="fas fa-map-marker-alt"></i> Guardar Dirección</button>
+                    <!-- Botón para desplegar/ocultar el contenido -->
+                    <button type="button" id="toggleDireccion" class="toggle-btn">
+                        <i class="fa fa-chevron-down"></i> <!-- Ícono de "desplegar" -->
+                        Opciones Adicionales
+                    </button>
 
-                    <label for="borrar-direccion">Eliminar Dirección</label>
-                    <form method="POST" action="" style="display: flex; align-items: center; gap: 10px;">
-                        <input type="text" id="addressFilter" placeholder="Filtro" oninput="filterAddresses()" class="styled-input" />
+                    <!-- Contenido que será ocultado/desplegado -->
+                    <div id="direccionContenido" class="direccion-contenido">
+                        <label for="nueva-direccion">Guardar Nueva Dirección</label>
+                        <input type="text" id="nueva-direccion" placeholder="Guardar nueva dirección">
+                        <button type="button" id="guardarDireccion"><i class="fas fa-map-marker-alt"></i> Guardar Dirección</button>
 
-                        <select name="address_id" id="addressSelect" class="styled-select">
-                            <!-- Opción vacía predeterminada -->
-                            <option value="" disabled selected>Seleccione una dirección</option>
-                            <?php
-                            // Consultar todas las direcciones de la base de datos para mostrarlas en el selector
-                            $conn = getDatabaseConnection();
-                            $result = $conn->query("SELECT id, direccion FROM direcciones");
+                        <label for="borrar-direccion" class="label-eliminar-direccion">Eliminar Dirección</label>
+                        <form method="POST" action="" style="display: flex; align-items: center; gap: 10px;">
+                            <input type="text" id="addressFilter" placeholder="Filtro" oninput="filterAddresses()" class="styled-input" />
 
-                            // Generar las opciones del selector con cada dirección
-                            while ($row = $result->fetch_assoc()) {
-                                echo "<option value='" . $row['id'] . "'>" . htmlspecialchars($row['direccion']) . "</option>";
-                            }
-                            $conn->close();
-                            ?>
-                        </select>
+                            <select name="address_id" id="addressSelect" class="styled-select">
+                                <option value="" disabled selected>Seleccione una dirección</option>
+                                <?php
+                                // Consultar todas las direcciones de la base de datos para mostrarlas en el selector
+                                $conn = getDatabaseConnection();
+                                $result = $conn->query("SELECT id, direccion FROM direcciones");
 
-                        <button type="submit" name="delete_address" class="delete-button">
-                            <i class="fa fa-trash"></i> <!-- Icono de "papelera" Font Awesome -->
-                            Eliminar Dirección
-                        </button>
+                                // Generar las opciones del selector con cada dirección
+                                while ($row = $result->fetch_assoc()) {
+                                    echo "<option value='" . $row['id'] . "'>" . htmlspecialchars($row['direccion']) . "</option>";
+                                }
+                                $conn->close();
+                                ?>
+                            </select>
 
-                    </form>
+                            <button type="submit" name="delete_address" class="delete-button">
+                                <i class="fa fa-trash"></i> <!-- Icono de "papelera" Font Awesome -->
+                                Eliminar Dirección
+                            </button>
+                        </form>
 
+                        <form id="form-eliminar-reporte" method="POST">
+                            <label for="borrar-direccion">Eliminar Reportes</label>
+                            <div class="selector-eliminar-reportes" style="display: flex; align-items: center; gap: 10px; margin-top: 20px;">
+                                <input type="text" id="search-reporte" placeholder="Filtro" oninput="filtrarReportes()">
+
+                                <div class="reportes" style="display: flex; align-items: center; gap: 5px;">
+                                    <select id="select-eliminar-reportes" name="id_reporte_eliminar">
+                                        <option value="">-- Seleccionar Reporte para Eliminar --</option>
+                                        <?php
+                                        $conn = getDatabaseConnection();
+                                        $result = $conn->query("SELECT id, nombre, fecha FROM reportes_2024");
+                                        while ($row = $result->fetch_assoc()):
+                                        ?>
+                                            <option value="<?php echo $row['id']; ?>" data-nombre="<?php echo htmlspecialchars($row['nombre']); ?>"><?php echo htmlspecialchars($row['nombre']); ?> - <?php echo htmlspecialchars($row['fecha']); ?></option>
+                                        <?php
+                                        endwhile;
+                                        $conn->close();
+                                        ?>
+                                    </select>
+                                    <button type="submit" name="eliminar_reporte" class="btn-eliminar-reporte">
+                                        <i class="fa fa-trash" aria-hidden="true"></i> Eliminar Reporte
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
                 </div>
-
             </div>
 
         </div>
@@ -1618,6 +1489,67 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="flatpickr/flatpickr.min.js"></script>
+    <script src="flatpickr/src/l10n/es.js"></script>
+
+
+
+    <script>
+        // Función para alternar la visibilidad con deslizamiento
+        document.getElementById('toggleDireccion').addEventListener('click', function() {
+            var direccionContenido = document.getElementById('direccionContenido');
+            direccionContenido.classList.toggle('visible');
+        });
+    </script>
+
+
+    <script>
+        const themeSwitch = document.getElementById('themeSwitch');
+        const themeStylesheet = document.getElementById('themeStylesheet');
+        const clearCacheButton = document.getElementById('clearCacheButton');
+
+        // Verificar si hay un tema guardado en localStorage
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+            themeStylesheet.href = savedTheme; // Aplicar el tema guardado
+            themeSwitch.checked = savedTheme === 'dark4.css'; // Ajustar posición del switch
+        } else {
+            // Si no hay tema guardado, establecer un tema por defecto (oscuro)
+            const defaultTheme = 'dark4.css';
+            themeStylesheet.href = defaultTheme;
+            localStorage.setItem('theme', defaultTheme);
+            themeSwitch.checked = false; // El switch inicia desmarcado
+        }
+
+        // Escuchar el evento de cambio en el switch
+        themeSwitch.addEventListener('change', () => {
+            const newTheme = themeSwitch.checked ? 'dark4.css' : 'light2.css';
+            themeStylesheet.href = newTheme; // Cambiar el tema
+            localStorage.setItem('theme', newTheme); // Guardar el tema seleccionado
+        });
+    </script>
+
+    <script>
+        flatpickr("#fecha", {
+            dateFormat: "Y-m-d", // Formato de la fecha
+            theme: "dark", // Establecer el tema oscuro
+            locale: "es"
+        });
+    </script>
+
+    <script>
+        document.getElementById("mirrorButton").addEventListener("click", function() {
+            // Crear y configurar un nuevo evento de clic
+            var event = new MouseEvent("click", {
+                bubbles: true,
+                cancelable: true,
+                view: window
+            });
+            // Despachar el evento de clic en el botón original
+            document.getElementById("originalButton").dispatchEvent(event);
+        });
+    </script>
 
     <script>
         // Agregar nueva sección
@@ -1642,6 +1574,7 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                     <option value="Backlights">Backlights</option>
                     <option value="MUDGF">MUDGF</option>
                     <option value="Pantalla LED Gran Formato">Pantalla LED Gran Formato</option>
+                    <option value="Espalda Pantalla LED Gran Formato">Espalda Pantalla LED Gran Formato</option>
                     <option value="AIPC">AIPC</option>
                 </select>
             </div>
@@ -1649,6 +1582,7 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 <label for="descripcion">Descripción:</label>
                 <textarea name="descripcion[]"></textarea>
             </div>
+            
             <div class="form-direc">
     <label for="direccion">Dirección:</label>
     <div class="inline-container">
@@ -1661,6 +1595,8 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
         </select>
     </div>
     <input type="text" class="direccion-text" readonly>
+    <!-- Contenedor dinámico de previsualización -->
+    <div class="preview-container"></div>
 </div>
 
             <div class="form-foto-container">
@@ -1689,7 +1625,7 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
    <button type="button" class="eliminar-Seccion"> <i class="fa fa-trash" aria-hidden="true"></i> Eliminar Sección </button>
 </div>
 <div class="divisor">
-<hr style="margin: 25px 0; border: none; border-top: 2px solid #232531; opacity: 0.7;" />
+<div class="line"></div>
 </div>
         `;
                 container.appendChild(nuevaSeccion);
@@ -1726,34 +1662,78 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
             }
         }
 
-
         // Función para filtrar direcciones
         function filtrarDirecciones(input) {
-            var seccionGroup = input.closest('.seccion-group');
-            var selectDireccion = seccionGroup.querySelector('select[name="direccion[]"]');
+            var formDirec = input.closest('.form-direc');
+            var selectDireccion = formDirec.querySelector('select[name="direccion[]"]');
             var filterValue = input.value.toLowerCase();
+            var previewContainer = formDirec.querySelector('.preview-container');
 
+            // Crear contenedor si no existe
+            if (!previewContainer) {
+                previewContainer = document.createElement('div');
+                previewContainer.className = 'preview-container hidden'; // Inicia oculto
+                formDirec.appendChild(previewContainer);
+            }
+
+            // Limpiar previsualización
+            previewContainer.innerHTML = '';
+
+            if (filterValue.trim() === '') {
+                // Si el filtro está vacío, ocultar el contenedor
+                previewContainer.classList.add('hidden');
+                return;
+            }
+
+            // Mostrar contenedor si hay filtro
+            previewContainer.classList.remove('hidden');
+
+            // Iterar sobre las opciones del select para filtrar
             for (var i = 0; i < selectDireccion.options.length; i++) {
                 var option = selectDireccion.options[i];
                 var textoOpcion = option.text.toLowerCase();
 
-                // Dividir el texto de la opción en palabras y comprobar si alguna palabra empieza con el valor de filtro
+                // Dividir el texto de la opción en palabras y comprobar coincidencias
                 var palabras = textoOpcion.split(' ');
                 var coincide = palabras.some(function(palabra) {
                     return palabra.startsWith(filterValue);
                 });
 
+                // Mostrar u ocultar la opción en el select
                 option.style.display = coincide ? '' : 'none';
+
+                // Agregar a la previsualización si coincide
+                if (coincide && option.value !== "") {
+                    var previewItem = document.createElement('div');
+                    previewItem.textContent = option.text;
+                    previewItem.className = 'preview-item';
+                    previewItem.dataset.value = option.value;
+
+                    // Evento al hacer clic en un elemento de previsualización
+                    previewItem.addEventListener('click', function() {
+                        input.value = ''; // Limpiar la casilla de filtro
+                        selectDireccion.value = this.dataset.value; // Seleccionar en el <select>
+                        mostrarDireccion(selectDireccion); // Mostrar en la casilla de texto
+                        previewContainer.innerHTML = ''; // Limpiar previsualización
+                        previewContainer.classList.add('hidden'); // Ocultar el contenedor
+                    });
+
+                    previewContainer.appendChild(previewItem);
+                }
+            }
+
+            // Si no hay resultados, ocultar el contenedor
+            if (previewContainer.innerHTML.trim() === '') {
+                previewContainer.classList.add('hidden');
             }
         }
 
-
         // Función para mostrar la dirección seleccionada en la casilla de texto
         function mostrarDireccion(selectElement) {
-            var direccionText = selectElement.parentElement.querySelector('.direccion-text');
-            direccionText.value = selectElement.value; // Copia el valor del select a la casilla de texto
+            var formDirec = selectElement.closest('.form-direc');
+            var direccionText = formDirec.querySelector('.direccion-text');
+            direccionText.value = selectElement.options[selectElement.selectedIndex].text;
         }
-
 
         document.getElementById('cargarReporte').addEventListener('click', function() {
             var id_reporte = document.getElementById('select-reportes').value;
@@ -1791,6 +1771,7 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 <option value="Backlights" ${seccion.seccion === 'Backlights' ? 'selected' : ''}>Backlights</option>
                 <option value="MUDGF" ${seccion.seccion === 'MUDGF' ? 'selected' : ''}>MUDGF</option>
                 <option value="Pantalla LED Gran Formato" ${seccion.seccion === 'Pantalla LED Gran Formato' ? 'selected' : ''}>Pantalla LED Gran Formato</option>
+                <option value="Espalda Pantalla LED Gran Formato" ${seccion.seccion === 'Espalda Pantalla LED Gran Formato' ? 'selected' : ''}>Espalda Pantalla LED Gran Formato</option>
                 <option value="AIPC" ${seccion.seccion === 'AIPC' ? 'selected' : ''}>AIPC</option>
             </select>
         </div>
@@ -1846,9 +1827,8 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
 
 <!-- Agregar divisor después del contenedor -->
 <div class="divisor2">
-    <hr style="margin: 0 0 0 0; border: none; border-top: 2px solid #232531; opacity: 0.7;" />
+    <div class="line"></div>
 </div>
-
 
                         `;
 
@@ -1874,7 +1854,6 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 alert('Por favor, selecciona un reporte para cargar.');
             }
         });
-
 
         // Función para eliminar la sección
         function eliminarSeccion(id_seccion, button) {
@@ -1904,7 +1883,6 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
             }
         }
 
-
         // Función para escapar caracteres HTML y prevenir XSS
         function escapeHtml(text) {
             var map = {
@@ -1918,7 +1896,6 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 return map[m];
             });
         }
-
 
         // Guardar dirección
         document.getElementById('guardarDireccion').addEventListener('click', function() {
@@ -1959,8 +1936,8 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
             }
         });
 
-        // Función para filtrar reportes
-        function filtrarReportes() {
+        // Función para filtrar reportes para editar
+        function filtrarReportesEditar() {
             var input = document.getElementById('search-reportes');
             var filterValue = input.value.toLowerCase();
             var select = document.getElementById('select-reportes');
@@ -1971,7 +1948,6 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 options[i].style.display = optionText.includes(filterValue) ? '' : 'none';
             }
         }
-
 
         // Evento para eliminar la imagen cargada desde el servidor
         document.addEventListener('click', function(e) {
@@ -2024,7 +2000,6 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
                 behavior: "smooth"
             });
         });
-
 
 
         // Capturamos el evento submit para todo el formulario - Barra progreso
@@ -2247,13 +2222,35 @@ if (isset($_POST['delete_address']) && isset($_POST['address_id'])) {
             }
         }
 
-
         window.addEventListener('load', function() {
             document.querySelectorAll('.eliminar-imagen').forEach(button => {
                 button.style.display = 'block';
             });
         });
+
+
+        //Filtro para eliminar reportes
+        function filtrarReportes() {
+            var input, filter, select, options, i, txtValue;
+            input = document.getElementById("search-reporte");
+            filter = input.value.toLowerCase();
+            select = document.getElementById("select-eliminar-reportes");
+            options = select.getElementsByTagName("option");
+
+            for (i = 1; i < options.length; i++) {
+                txtValue = options[i].getAttribute("data-nombre");
+                if (txtValue.toLowerCase().indexOf(filter) > -1) {
+                    options[i].style.display = "";
+                } else {
+                    options[i].style.display = "none";
+                }
+            }
+        }
         
+        
+        
+ 
+
     </script>
 
 </body>
